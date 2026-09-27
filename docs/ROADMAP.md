@@ -5,7 +5,7 @@ browser. No slice is "build the persistence layer".
 
 Mark the current slice here so a fresh session knows where it is.
 
-**Current slice: S5**
+**Current slice: S6**
 
 ---
 
@@ -95,11 +95,17 @@ sittings; do not rush it.
   content slides, speaker notes on every slide, plus a markdown outline.
   Checked with curl, real Ollama jobs (qwen3 and qwen2.5:1.5b), by opening
   the decks in PowerPoint and by hand in the browser.
-- **S5c — advisory PDF** for any source, not only security ones: a
-  government memo becomes a directive-style bulletin. Not public, so IOCs
-  may appear.
+- **S5c — advisory PDF** for any source. Done. Security advisory, official
+  notice, advisory or information bulletin, depending on the source; exact
+  values (CVEs, versions, CVSS, IOCs, timeline, figures) are copied from the
+  brief by the renderer, which now receives it. Checked with curl, real
+  Ollama jobs (qwen3 and qwen2.5:1.5b) and by hand in the browser.
 
 **Done when:** a judge can download a .pptx and open it in PowerPoint.
+
+Done. Decks download from the browser and open in PowerPoint; the executive
+summary and the advisory download as PDFs. Open for evals: invented numbers
+in speaker notes, and press-release claims stated rather than attributed.
 
 ## S6 — Infographic
 Write three or four SVG templates **by hand first** (stat grid, timeline,

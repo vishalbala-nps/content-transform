@@ -72,7 +72,7 @@ class ExecSummaryAdapter:
             brief=brief_for_prompt(brief, public=self.public),
         )
 
-    def render(self, payload: ExecSummary, config: GenerationConfig) -> list[Artifact]:
+    def render(self, payload: ExecSummary, config: GenerationConfig, brief: ContentBrief) -> list[Artifact]:
         sections = [f"# {payload.title}", f"**Bottom line.** {payload.bottom_line}"]
         sections.append("## Key points\n\n" + "\n".join(f"- {p}" for p in payload.key_points))
         if payload.actions:

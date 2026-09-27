@@ -136,7 +136,7 @@ class DeckAdapter:
             brief=brief_for_prompt(brief, public=self.public),
         )
 
-    def render(self, payload: Deck, config: GenerationConfig) -> list[Artifact]:
+    def render(self, payload: Deck, config: GenerationConfig, brief: ContentBrief) -> list[Artifact]:
         deck = DeckBuilder(title=payload.title, footer=payload.title)
         deck.title_slide(payload.title, payload.subtitle, payload.opening_notes)
         if payload.key_numbers:

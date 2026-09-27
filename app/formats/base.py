@@ -48,7 +48,11 @@ class OutputAdapter(Protocol):
 
     def prompt(self, brief: ContentBrief, config: GenerationConfig) -> str: ...
 
-    def render(self, payload: BaseModel, config: GenerationConfig) -> list[Artifact]: ...
+    def render(self, payload: BaseModel, config: GenerationConfig, brief: ContentBrief) -> list[Artifact]:
+        """Lay out the payload. Exact values (versions, CVE ids, hashes) are
+        copied from `brief`, never retyped by the model. A public format gets
+        the brief without IOCs, as its prompt does (see brief_view.py)."""
+        ...
 
     def check(self, payload: BaseModel, artifacts: list[Artifact]) -> list[str]:
         """Soft warnings, e.g. "tweet 4 is 297/280 characters". Empty when clean."""

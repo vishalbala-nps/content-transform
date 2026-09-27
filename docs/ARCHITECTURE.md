@@ -102,7 +102,8 @@ class OutputAdapter(Protocol):
     public: bool                   # public-facing: the IOC policy applies
     schema: type[BaseModel]        # what the model fills
     def prompt(self, brief: ContentBrief, config: GenerationConfig) -> str: ...
-    def render(self, payload: BaseModel, config: GenerationConfig) -> list[Artifact]: ...
+    def render(self, payload: BaseModel, config: GenerationConfig,
+               brief: ContentBrief) -> list[Artifact]: ...
     def check(self, payload: BaseModel, artifacts: list[Artifact]) -> list[str]: ...
 ```
 
@@ -114,6 +115,11 @@ class OutputAdapter(Protocol):
 - `check` returns soft warnings (over a character limit, too many hashtags).
   It never fails a job. Evals score with it, so a new format brings its own
   limits and the eval harness needs no edit.
+- `render()` also receives the brief, so exact values (CVE ids, versions,
+  CVSS, IOCs, dates, figures) are copied from it into the output rather than
+  retyped by the model; the model writes prose. A `public` format receives
+  the brief with IOCs removed, the same rule its prompt gets
+  (`brief_view.py`).
 - `render()` does no I/O. A binary artefact (PDF, PPTX, PNG) comes back as
   bytes in `data`; the job saves them through `app/core/storage.py` before
   writing the result to its row, and records the key in `path`. Text

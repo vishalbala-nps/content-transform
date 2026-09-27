@@ -63,7 +63,7 @@ class XThreadAdapter:
             brief=brief_for_prompt(brief, public=self.public),
         )
 
-    def render(self, payload: XThread, config: GenerationConfig) -> list[Artifact]:
+    def render(self, payload: XThread, config: GenerationConfig, brief: ContentBrief) -> list[Artifact]:
         n = len(payload.tweets)
         tags = " ".join("#" + t.lstrip("#").replace(" ", "") for t in payload.hashtags)
         parts = [f"{tweet.strip()} {i}/{n}" for i, tweet in enumerate(payload.tweets, start=1)]

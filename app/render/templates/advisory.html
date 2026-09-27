@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% set security = brief.security %}
+{% block kind %}{{ kind }}{% endblock %}
+{% block note %}Prepared from the source's content brief. Check {{ "versions and indicators" if security else "figures and dates" }} against the source before acting.{% endblock %}
+{% block style %}
+  table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+  th {
+    text-align: left;
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0 3mm 1.5mm 0;
+    border-bottom: 0.8pt solid var(--ink);
+  }
+  td { padding: 2mm 3mm 2mm 0; border-bottom: 0.6pt solid var(--rule); vertical-align: top; }
+  tr { break-inside: avoid; }
+  /* A heading and its table move together; a table longer than a page still
+     splits, and its thead repeats on the next page. */
+  section.table { break-inside: avoid; }
+  td.nowrap { white-space: nowrap; }
+  td.value { font-weight: 700; color: var(--accent); white-space: nowrap; }
+  td.indicator {
+    font-family: "Menlo", "DejaVu Sans Mono", monospace;
+    font-size: 8.5pt;
+    word-break: break-all;
+  }
+
+  .facts { margin: 0 0 6mm; }
+  .facts td { border-bottom: 0.6pt solid var(--rule); }
+  .facts td.label {
+    width: 28mm;
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding-top: 2.4mm;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 0.6mm 2.2mm;
+    border-radius: 1mm;
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .badge.action { color: var(--accent); background: var(--accent-soft); }
+  .badge.info { color: var(--muted); background: #f2f4f7; }
+  .badge.critical { color: #b42318; background: #fef3f2; }
+  .badge.high { color: #c4320a; background: #fff4ed; }
+  .badge.medium { color: #b54708; background: #fffaeb; }
+  .badge.low, .badge.informational { color: #475467; background: #f2f4f7; }
+  .score { margin-left: 2mm; color: var(--muted); font-size: 9pt; }
+{% endblock %}
+{% block content %}
+<h1>{{ a.title }}</h1>
+<p class="source">{{ source }}</p>
+
+<table class="facts">
+  <tr>
+    <td class="label">Status</td>
+    <td>
+      {% if a.status == "action_required" %}<span class="badge action">Action required</span>
+      {% else %}<span class="badge info">For information</span>{% endif %}
+    </td>
+  </tr>
+  {% if severity %}
+  <tr>
+    <td class="label">Severity</td>
+    <td>
+      <span class="badge {{ security.severity }}">{{ severity }}</span>
+      {% if security.cvss_score is not none %}<span class="score">CVSS {{ security.cvss_score }}</span>{% endif %}
+    </td>
+  </tr>
+  {% endif %}
+  {% if security and security.cve_ids %}
+  <tr><td class="label">CVE</td><td>{{ security.cve_ids | join(", ") }}</td></tr>
+  {% endif %}
+  <tr><td class="label">Audience</td><td>{{ a.audience }}</td></tr>
+</table>
+
+<div class="callout">
+  <span class="label">Summary</span>
+  {{ a.summary }}
+</div>
+
+{% if security and security.affected_products %}
+<section class="table">
+<h2>Affected products</h2>
+<table>
+  <thead><tr><th>Product</th><th>Affected versions</th></tr></thead>
+  {% for p in security.affected_products %}
+  <tr><td>{{ p.name }}</td><td>{{ p.versions }}</td></tr>
+  {% endfor %}
+</table>
+</section>
+{% endif %}
+
+<h2>Details</h2>
+{% for paragraph in a.details %}
+<p>{{ paragraph }}</p>
+{% endfor %}
+
+<h2>Impact</h2>
+<p>{{ a.impact }}</p>
+
+{% if a.actions %}
+<h2>Actions</h2>
+<ol class="steps">
+{% for action in a.actions %}
+  <li>{{ action }}</li>
+{% endfor %}
+</ol>
+{% endif %}
+
+{% if brief.stats %}
+<section class="table">
+<h2>Key figures</h2>
+<table>
+  <thead><tr><th>Figure</th><th>What it measures</th></tr></thead>
+  {% for s in brief.stats %}
+  <tr><td class="value">{{ s.value }}</td><td>{{ s.label }}</td></tr>
+  {% endfor %}
+</table>
+</section>
+{% endif %}
+
+{% if brief.timeline %}
+<section class="table">
+<h2>Timeline</h2>
+<table>
+  <thead><tr><th>When</th><th>Event</th></tr></thead>
+  {% for t in brief.timeline %}
+  <tr><td class="nowrap">{{ t.when }}</td><td>{{ t.event }}</td></tr>
+  {% endfor %}
+</table>
+</section>
+{% endif %}
+
+{% if security and security.iocs %}
+<section class="table">
+<h2>Indicators of compromise</h2>
+<table>
+  <thead><tr><th>Type</th><th>Indicator</th></tr></thead>
+  {% for i in security.iocs %}
+  <tr><td class="nowrap">{{ i.kind | upper if i.kind in ("ip", "url") else i.kind | capitalize }}</td><td class="indicator">{{ i.value }}</td></tr>
+  {% endfor %}
+</table>
+</section>
+{% endif %}
+{% endblock %}

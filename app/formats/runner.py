@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.core.llm import LLMError, complete_json
 from app.formats.base import Artifact, GenerationConfig, OutputAdapter
+from app.formats.brief_view import brief_for_render
 from app.formats.registry import ADAPTERS
 from app.understand.schemas import ContentBrief
 
@@ -26,7 +27,8 @@ async def run_format(adapter: OutputAdapter, brief: ContentBrief, config: Genera
     try:
         payload = await complete_json(adapter.schema, adapter.prompt(brief, config))
         # Off the event loop: a PDF or deck takes long enough to stall progress streams.
-        artifacts = await asyncio.to_thread(adapter.render, payload, config)
+        render_brief = brief_for_render(brief, public=adapter.public)
+        artifacts = await asyncio.to_thread(adapter.render, payload, config, render_brief)
         warnings = adapter.check(payload, artifacts)
     except Exception as e:
         # Anything else is a bug in the adapter, but it still must not take

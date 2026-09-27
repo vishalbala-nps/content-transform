@@ -50,7 +50,7 @@ class LinkedInAdapter:
     def prompt(self, brief: ContentBrief, config: GenerationConfig) -> str:
         return PROMPT.format(max_chars=MAX_CHARS, brief=brief_for_prompt(brief, public=self.public))
 
-    def render(self, payload: LinkedInPost, config: GenerationConfig) -> list[Artifact]:
+    def render(self, payload: LinkedInPost, config: GenerationConfig, brief: ContentBrief) -> list[Artifact]:
         tags = " ".join("#" + t.lstrip("#").replace(" ", "") for t in payload.hashtags)
         text = "\n\n".join([payload.hook, *payload.paragraphs, *([tags] if tags else [])])
         return [Artifact(filename="linkedin.md", media_type="text/markdown", text=text)]

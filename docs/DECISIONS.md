@@ -449,3 +449,36 @@ Ollama's docs recommend also putting the schema in the prompt. Doing that in
   score reads the whole payload, notes included, so it will measure this once
   evals resume, rather than the prompt being tuned on one output.
   `qwen2.5:1.5b` fills the schema too (all four formats in one job).
+
+**2026-09-27 — S5c: `render()` receives the brief; advisory PDF for any source.**
+- `OutputAdapter.render` is now `render(payload, config, brief)` (frozen
+  contract, agreed before editing). An advisory's value is its exact facts:
+  CVE ids, CVSS, versions, IOC hashes. Having the model copy them risks a
+  changed digit nobody notices (qwen3 already invented a number in deck
+  notes), so the renderer copies them from the brief and the model writes
+  only prose. Rejected: the model copying everything (no contract change, but
+  unchecked values), and a schema built per brief with enums of the brief's
+  values (exact, but every schema becomes dynamic). The four existing
+  adapters only gained the parameter.
+- The IOC policy now covers rendering: the runner passes a public format a
+  brief without IOCs, and without claims or actions that mention one, via
+  `brief_for_render` beside `brief_for_prompt` in `brief_view.py`. The
+  prompt view is byte-for-byte unchanged on all five fixtures.
+- New format `advisory` ("Advisory"), not public: the one format that lists
+  indicators. It works for any source; the header names the document by what
+  it is: "Security advisory" when the brief has a security block, "Official
+  notice" for a government memo, otherwise "Advisory" or "Information
+  bulletin" by the status the model picks (`action_required` or
+  `for_information`).
+- Layout follows CERT-style advisories: status, severity and CVSS, CVE ids
+  and audience at the top, summary, affected products, details, impact,
+  actions, then key figures, timeline and indicators as tables from the
+  brief. A heading and its table keep together, and a table longer than a
+  page repeats its header. The prompt is told which tables will appear so the
+  prose refers to them instead of copying lists.
+- Checked on qwen3 with three fixtures: valid first time, no invented
+  numbers, no indicators copied into the prose, sensible status for each
+  source. Every indicator, the 64-character hash included, reads back from
+  the PDF's text layer exactly as in the brief. `qwen2.5:1.5b` runs all five
+  formats in one job. Open for evals: the press release's claims were stated
+  rather than attributed to the company.
