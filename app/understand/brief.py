@@ -1,8 +1,9 @@
 """SourceDocument -> ContentBrief. The only place the source is read by a model."""
 
 import uuid
+from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
 
 from app.core.llm import complete_json
 from app.ingest.base import SourceDocument
@@ -19,23 +20,38 @@ from app.understand.schemas import (
 )
 
 
-class _ClaimDraft(BaseModel):
-    text: str = Field(description="One self-contained factual statement from the source.")
-    support: Support = Field(description="Ids of the source blocks that state this claim.")
+def _draft_schema(doc: SourceDocument) -> type[BaseModel]:
+    """What the model fills: ContentBrief minus the ids, which code assigns.
 
+    Built per document so that every `support` list may only hold this
+    document's block ids, as a JSON-schema enum. The model cannot cite a block
+    that does not exist or mangle an id ("/b5", "[b5]"): the provider's
+    constrained decoding rules it out, and validation rejects it if not.
+    """
+    block_id = Enum("BlockId", [(b.id, b.id) for b in doc.blocks], type=str)
+    cited = list[block_id]
 
-class _BriefDraft(BaseModel):
-    """What the model fills: ContentBrief minus the ids, which code assigns."""
+    def with_support(base: type[BaseModel]) -> type[BaseModel]:
+        return create_model(base.__name__, __base__=base, support=(cited, ...))
 
-    title: str = Field(description="A short, specific title for the source.")
-    source: SourceProfile
-    tldr: str = Field(description="Two or three sentences a busy reader could stop after.")
-    claims: list[_ClaimDraft]
-    entities: list[Entity]
-    timeline: list[TimelineItem]
-    stats: list[Stat]
-    actions: list[Action]
-    security: SecurityDetails | None
+    claim = create_model(
+        "_ClaimDraft",
+        text=(str, Field(description="One self-contained factual statement from the source.")),
+        support=(cited, Field(description="Ids of the source blocks that state this claim.")),
+    )
+    return create_model(
+        "_BriefDraft",
+        __doc__="What the model fills: ContentBrief minus the ids, which code assigns.",
+        title=(str, Field(description="A short, specific title for the source.")),
+        source=(SourceProfile, ...),
+        tldr=(str, Field(description="Two or three sentences a busy reader could stop after.")),
+        claims=(list[claim], ...),
+        entities=(list[Entity], ...),
+        timeline=(list[with_support(TimelineItem)], ...),
+        stats=(list[with_support(Stat)], ...),
+        actions=(list[with_support(Action)], ...),
+        security=(SecurityDetails | None, ...),
+    )
 
 
 PROMPT = """You are analysing a source document so that several communication
@@ -76,14 +92,12 @@ def _render_blocks(doc: SourceDocument) -> str:
 
 
 async def build_brief(doc: SourceDocument) -> ContentBrief:
-    draft = await complete_json(_BriefDraft, PROMPT.format(blocks=_render_blocks(doc)))
+    draft = await complete_json(_draft_schema(doc), PROMPT.format(blocks=_render_blocks(doc)))
 
-    # The model may cite ids that do not exist. Drop them rather than fail:
-    # a claim with empty support is exactly what grounding will flag later.
-    known = {b.id for b in doc.blocks}
-
-    def keep(ids: Support) -> Support:
-        return [i for i in ids if i in known]
+    # Every id is a real block (the schema allows nothing else). Empty support
+    # is still possible, and is what grounding will flag later.
+    def keep(ids: list[Enum]) -> Support:
+        return list(dict.fromkeys(i.value for i in ids))
 
     return ContentBrief(
         brief_id="brief_" + uuid.uuid4().hex[:12],

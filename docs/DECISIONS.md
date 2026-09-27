@@ -301,3 +301,21 @@ table, two columns), scanned, mixed, encrypted and corrupt files, and a
 15-page two-column arXiv paper (under a second). Known weak spots: author
 grids on title pages and hanging-indent reference lists split oddly, and
 tables without vertical rules can run cells together.
+
+**2026-09-27 — Brief support ids are an enum of the document's block ids.**
+Supersedes "drops support ids that are not real blocks" in the ContentBrief
+entry above. `qwen2.5:1.5b` cited the right blocks but wrote the ids as
+`"/b5"`, `"[b2]"` or `"[b6][b9][]"`, so every citation was dropped and every
+claim looked unsupported. `build_brief` now builds its draft schema per
+document, and each `support` list is an array of a `BlockId` enum holding
+exactly that document's ids. Constrained decoding (Gemini and Ollama both)
+then cannot emit anything else, and validation plus the one retry catch it
+if a provider lets it through. Chosen over rewording the prompt (a small model
+may ignore it) and over cleaning ids with a regex (CLAUDE.md: never regex a
+model response). `schemas.py` is unchanged; only the draft the model fills is.
+Empty support is still allowed and still means "unsupported" for S7.
+Checked with Ollama on the advisory PDF, cache off: on the 1.5b model the old
+schema kept 0 valid claim citations in 3 runs, the new one kept all of them
+in 3 runs; on qwen3 both schemas gave the same brief (17-18 claims, all
+cited). A 225-block paper works too (qwen3: 10 of 10 claims cited, 160 s).
+Not yet run on Gemini; evals paused, so not scored.

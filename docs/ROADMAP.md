@@ -57,9 +57,9 @@ One ingester per sitting, each one module plus a line in
 
 - **S4a — upload plumbing + DOCX (python-docx).** Done. Checked with curl,
   a real Ollama job and by hand in the browser.
-- **S4b — PDF with a text layer (PyMuPDF).** Built. Blocks carry page
+- **S4b — PDF with a text layer (PyMuPDF).** Done. Blocks carry page
   numbers; a PDF with no text layer is refused with a clear 422. Checked with
-  curl and a real Ollama job; the upload still needs a check by hand.
+  curl, a real Ollama job and by hand in the browser.
 - **S4c — HTML (trafilatura).**
 - **Deferred — images and scanned PDFs**, read by a vision model into blocks.
   Needs Gemini quota or a vision model on Ollama; see DECISIONS.
