@@ -15,6 +15,8 @@ Gemini only for now; the Ollama fallback is deferred (see docs/DECISIONS.md).
   backoff; dropped connections are retried here like throttling.
 - Dev cache: responses that validate are stored under `.cache/llm/`, keyed on
   (model, prompt, schema). On by default; `LLM_CACHE=0` for demo runs.
+  `LLM_CACHE_DELAY_S` makes each cache hit wait like a real call, so job
+  progress, closing the tab and restarts can be tested without using quota.
 """
 
 import asyncio
@@ -85,8 +87,13 @@ def _cache_path(model: str, prompt: str, json_schema: dict) -> Path:
     return CACHE_DIR / f"{hashlib.sha256(key.encode()).hexdigest()}.json"
 
 
-async def _generate(model: str, prompt: str, config: types.GenerateContentConfig, label: str) -> str:
-    """One model call under the concurrency limit, retrying throttling."""
+async def _generate(
+    model: str, prompt: str, config: types.GenerateContentConfig, label: str
+) -> tuple[str, str]:
+    """One model call under the concurrency limit, retrying throttling.
+
+    Returns the response text and a one-line summary of the request for the log.
+    """
     for delay in (*THROTTLE_DELAYS_S, None):
         try:
             async with _slots():
@@ -119,16 +126,13 @@ async def _generate(model: str, prompt: str, config: types.GenerateContentConfig
             continue
 
         usage = response.usage_metadata
-        log.info(
-            "%s %s %.1fs prompt=%s output=%s thinking=%s",
-            model,
-            label,
+        stats = "request {:.1f}s prompt={} output={} thinking={}".format(
             time.perf_counter() - started,
             usage.prompt_token_count if usage else None,
             usage.candidates_token_count if usage else None,
             usage.thoughts_token_count if usage else None,
         )
-        return response.text or ""
+        return response.text or "", stats
     raise AssertionError("unreachable")
 
 
@@ -142,7 +146,9 @@ async def complete_json(schema: type[T], prompt: str, model: str | None = None) 
     if cache and cache.exists():
         try:
             result = schema.model_validate_json(cache.read_text())
-            log.info("%s %s cache hit", model, schema.__name__)
+            if settings.llm_cache_delay_s:
+                await asyncio.sleep(settings.llm_cache_delay_s)
+            log.info("%s %s done from cache", model, schema.__name__)
             return result
         except ValidationError:
             pass  # validators changed under the same JSON schema; regenerate
@@ -152,19 +158,38 @@ async def complete_json(schema: type[T], prompt: str, model: str | None = None) 
         response_json_schema=json_schema,
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
     )
+    name = schema.__name__
+    started = time.perf_counter()
     attempt_prompt = prompt
     for attempt in range(2):
-        text = await _generate(model, attempt_prompt, config, f"{schema.__name__} attempt={attempt + 1}")
+        text, stats = await _generate(model, attempt_prompt, config, f"{name} attempt={attempt + 1}")
         try:
             result = schema.model_validate_json(text)
         except ValidationError as e:
             if attempt == 1:
+                log.warning("%s %s failed validation again, giving up (%s)", model, name, stats)
                 raise LLMError(f"model output failed validation twice: {e}") from e
+            log.warning(
+                "%s %s failed validation (%d errors), retrying with the errors (%s)",
+                model,
+                name,
+                e.error_count(),
+                stats,
+            )
             attempt_prompt = (
                 f"{prompt}\n\nYour previous response was invalid:\n{e}\n"
                 "Return JSON that matches the schema exactly."
             )
             continue
+        # Total time includes waiting for a slot, throttling and any validation retry.
+        log.info(
+            "%s %s done in %.1fs, attempt %d, %s",
+            model,
+            name,
+            time.perf_counter() - started,
+            attempt + 1,
+            stats,
+        )
         if cache:
             cache.parent.mkdir(parents=True, exist_ok=True)
             cache.write_text(text)

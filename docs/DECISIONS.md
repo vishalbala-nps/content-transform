@@ -195,3 +195,31 @@ field; prompts start reading it when the S8 controls exist.
   format; the others still return.
 - Executive summary is not public, so it gets the full brief including IOCs;
   its prompt says whether indicators exist without listing them.
+
+**2026-09-27 — S3 jobs: one table, one worker, progress derived.**
+- SQLAlchemy added (the stack already named it) for Postgres-compatible
+  models; stdlib `sqlite3` would tie the code to SQLite. Tables come from
+  `create_all`; no Alembic until a schema actually changes. Calls are
+  synchronous on the event loop: single-row SQLite writes of about a
+  millisecond, and with no await between reading a row and writing it back,
+  parallel formats cannot overwrite each other's results.
+- One `jobs` row holds the request, the ingested source, the brief and each
+  format's result as JSON. No `steps_json` column, despite the "No Celery"
+  entry above: every step's status follows from the job status plus which
+  results exist, so the API derives it instead of storing it twice. Text-only
+  artifacts live on the row; file storage arrives with S5's binaries.
+- The source is ingested when the job is created, so an empty text is still a
+  422 and the worker starts at the brief.
+- One worker task, one job at a time, one server process. Model calls are
+  capped process-wide, so parallel jobs would only share the same slots.
+- A restart re-queues jobs left `running`; they resume after their last saved
+  step (a saved brief is not rebuilt, finished formats are not rerun).
+- SSE re-reads the job row every 0.5 s and sends the job's full state whenever
+  it changed, then closes when the job finishes. No in-memory pub/sub, so a
+  tab opened late or reconnecting after a restart needs nothing replayed.
+  Uses FastAPI's built-in `fastapi.sse`, no extra dependency.
+- `POST /api/generate` is replaced by `POST /api/jobs`, `GET /api/jobs`,
+  `GET /api/jobs/{id}` and `GET /api/jobs/{id}/events`.
+- Run uvicorn with `--timeout-graceful-shutdown 3`. Uvicorn otherwise waits
+  indefinitely for open streams on shutdown or reload, i.e. until the watched
+  job finishes, which can be over a minute under throttling.

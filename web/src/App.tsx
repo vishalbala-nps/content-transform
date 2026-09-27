@@ -1,31 +1,121 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { LoaderCircle } from "lucide-react"
 
 import { BriefPanel } from "@/components/brief-panel"
+import { JobHistory } from "@/components/job-history"
+import { JobProgress } from "@/components/job-progress"
 import { OutputPanel } from "@/components/output-panel"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { generate, listFormats } from "@/lib/api"
-import type { FormatInfo, GenerateResponse } from "@/lib/types"
+import {
+  createJob,
+  isFinished,
+  listFormats,
+  listJobs,
+  watchJob,
+} from "@/lib/api"
+import type { FormatInfo, Job, JobSummary } from "@/lib/types"
+
+// The open job lives in the URL (?job=<id>), so a refresh, a reopened tab or
+// a shared link shows the same job, finished or still running.
+function jobIdFromUrl(): string | null {
+  return new URLSearchParams(window.location.search).get("job")
+}
+
+function statusText(job: Job): string {
+  switch (job.status) {
+    case "queued":
+      return "Queued…"
+    case "running":
+      return "Working… you can close this tab and come back."
+    case "failed":
+      return "Failed"
+    case "done": {
+      const failed = job.outputs.filter((o) => o.error).length
+      return `${job.brief?.claims.length ?? 0} claims · ${job.outputs.length - failed} of ${job.formats.length} formats generated`
+    }
+  }
+}
 
 export function App() {
   const [text, setText] = useState("")
   const [formats, setFormats] = useState<FormatInfo[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<GenerateResponse | null>(null)
+  const [jobId, setJobId] = useState<string | null>(jobIdFromUrl)
+  const [job, setJob] = useState<Job | null>(null)
+  const [reconnecting, setReconnecting] = useState(false)
+  const [history, setHistory] = useState<JobSummary[]>([])
+  // Opening an existing job (a link or the history list) fills the form with
+  // its input. A job just submitted already matches the form.
+  const fillForm = useRef(jobId !== null)
+
+  // History is a convenience: if it fails to load, the rest of the page still works.
+  const refreshHistory = useCallback(() => {
+    listJobs()
+      .then(setHistory)
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     listFormats()
       .then((list) => {
         setFormats(list)
-        setSelected(new Set(list.map((f) => f.name)))
+        // An opened job may already have chosen the formats.
+        setSelected((prev) =>
+          prev.size > 0 ? prev : new Set(list.map((f) => f.name))
+        )
       })
       .catch((err) => setError(`Could not load formats: ${err.message}`))
+    refreshHistory()
+  }, [refreshHistory])
+
+  useEffect(() => {
+    function onPopState() {
+      fillForm.current = true
+      setError(null)
+      setJobId(jobIdFromUrl())
+    }
+    window.addEventListener("popstate", onPopState)
+    return () => window.removeEventListener("popstate", onPopState)
   }, [])
+
+  useEffect(() => {
+    if (!jobId) return
+    return watchJob(jobId, {
+      onUpdate: (j) => {
+        setReconnecting(false)
+        setJob(j)
+        if (fillForm.current) {
+          fillForm.current = false
+          setText(j.source.markdown)
+          setSelected(new Set(j.formats))
+        }
+        if (isFinished(j)) refreshHistory()
+      },
+      onLost: () => setReconnecting(true),
+      onFail: () => {
+        setReconnecting(false)
+        setError("Could not load this job.")
+      },
+    })
+  }, [jobId, refreshHistory])
+
+  // Until the first event for a newly opened job arrives, show nothing rather
+  // than the previous job.
+  const current = job && job.id === jobId ? job : null
+  const busy = submitting || (current !== null && !isFinished(current))
+
+  function openJob(id: string, fill: boolean) {
+    if (id === jobId) return
+    fillForm.current = fill
+    setError(null)
+    window.history.pushState(null, "", `?job=${id}`)
+    setJobId(id)
+  }
 
   function toggle(name: string, on: boolean) {
     setSelected((prev) => {
@@ -45,20 +135,21 @@ export function App() {
       setError("Choose at least one format.")
       return
     }
-    setLoading(true)
+    setSubmitting(true)
     setError(null)
     try {
       // Keep the server's order, which is the order the formats are listed in.
       const names = formats.map((f) => f.name).filter((n) => selected.has(n))
-      setResult(await generate(text, names))
+      const created = await createJob(text, names)
+      setJob(created)
+      openJob(created.id, false)
+      refreshHistory()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
-      setLoading(false)
+      setSubmitting(false)
     }
   }
-
-  const failed = result?.outputs.filter((o) => o.error).length ?? 0
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 px-4 py-8">
@@ -93,35 +184,47 @@ export function App() {
         </div>
       </fieldset>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button onClick={run} disabled={loading || selected.size === 0}>
-          {loading && <LoaderCircle className="animate-spin" />}
-          Generate
-        </Button>
-        <span role="status" className="text-sm text-muted-foreground">
-          {loading
-            ? `Analysing source, then writing ${selected.size} format${selected.size === 1 ? "" : "s"}…`
-            : result && !error
-              ? `${result.brief.claims.length} claims · ${result.outputs.length - failed} of ${result.outputs.length} formats generated`
-              : null}
-        </span>
-        {error && (
-          <span role="alert" className="text-sm text-destructive">
-            {error}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button onClick={run} disabled={busy || selected.size === 0}>
+            {busy && <LoaderCircle className="animate-spin" />}
+            Generate
+          </Button>
+          <span role="status" className="text-sm text-muted-foreground">
+            {reconnecting
+              ? "Lost the connection to the server, reconnecting…"
+              : current && statusText(current)}
           </span>
+          {error && (
+            <span role="alert" className="text-sm text-destructive">
+              {error}
+            </span>
+          )}
+        </div>
+        {current && <JobProgress steps={current.steps} />}
+        {current?.error && (
+          <p role="alert" className="text-sm text-destructive">
+            {current.error}
+          </p>
         )}
       </div>
 
-      {result && (
+      {current?.brief && (
         <div className="grid items-start gap-6 lg:grid-cols-2">
-          <BriefPanel brief={result.brief} source={result.source} />
+          <BriefPanel brief={current.brief} source={current.source} />
           <div className="space-y-6">
-            {result.outputs.map((o) => (
+            {current.outputs.map((o) => (
               <OutputPanel key={o.name} result={o} />
             ))}
           </div>
         </div>
       )}
+
+      <JobHistory
+        jobs={history}
+        currentId={jobId}
+        onOpen={(id) => openJob(id, true)}
+      />
     </main>
   )
 }

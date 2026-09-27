@@ -47,6 +47,9 @@ survive a page refresh and a server restart.
 
 **Done when:** you can close the tab mid-job and come back to a finished one.
 
+Built; the "done when" was checked with curl and a headless browser, including a
+server restart mid-job. Mark done after trying it in a real browser.
+
 ## S4 — Ingestion
 One ingester per sitting: PDF and DOCX (Docling), HTML (trafilatura), images
 (PaddleOCR plus a vision caption). Each plugs into the ingest registry.

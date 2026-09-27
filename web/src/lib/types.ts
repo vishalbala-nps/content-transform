@@ -125,8 +125,31 @@ export interface FormatResult {
   error: string | null
 }
 
-export interface GenerateResponse {
+export type JobStatus = "queued" | "running" | "done" | "failed"
+
+export interface Step {
+  name: string // "brief" or a format name
+  label: string
+  status: "pending" | "running" | "done" | "failed" | "skipped"
+}
+
+export interface Job {
+  id: string
+  status: JobStatus
+  created_at: string
+  updated_at: string
+  formats: string[] // requested, in registry order
+  steps: Step[]
   source: SourceDocument
-  brief: ContentBrief
-  outputs: FormatResult[]
+  brief: ContentBrief | null
+  outputs: FormatResult[] // finished formats only
+  error: string | null // why the whole job failed
+}
+
+export interface JobSummary {
+  id: string
+  status: JobStatus
+  created_at: string
+  title: string
+  formats: string[]
 }
