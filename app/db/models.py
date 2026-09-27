@@ -1,7 +1,8 @@
 """The jobs table. SQLite in dev; nothing here is SQLite-specific.
 
-A job's results are JSON columns on the row: until S5 every artifact is text,
-so there is nothing to put in file storage yet.
+A job's results are JSON columns on the row. Text artifacts live there in
+full; binary ones (PDF, PPTX) are in app/core/storage.py, and the row keeps
+their storage key.
 """
 
 from datetime import UTC, datetime

@@ -3,13 +3,13 @@ from collections.abc import AsyncIterable
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from fastapi.sse import EventSourceResponse
 from pydantic import BaseModel, Field
 
-from app.core import jobs
+from app.core import jobs, storage
 from app.db.models import Job
-from app.formats.base import GenerationConfig
+from app.formats.base import Artifact, GenerationConfig
 from app.formats.registry import ADAPTERS
 from app.formats.runner import FormatResult
 from app.ingest.base import SourceDocument
@@ -216,6 +216,38 @@ async def list_jobs() -> list[JobSummary]:
 @router.get("/jobs/{job_id}", response_model=JobView)
 async def get_job(job: Annotated[Job, Depends(_load_job)]) -> JobView:
     return _view(job)
+
+
+@router.get("/jobs/{job_id}/files/{format_name}/{filename}")
+async def download_artifact(
+    job: Annotated[Job, Depends(_load_job)], format_name: str, filename: str
+) -> Response:
+    """One artifact as a download: text from the job row, binaries from storage.
+
+    Looked up on the row rather than built into a storage path, so only files
+    the job actually produced can be fetched.
+    """
+    output = job.outputs.get(format_name)
+    artifact = next(
+        (Artifact.model_validate(a) for a in (output or {}).get("artifacts", []) if a["filename"] == filename),
+        None,
+    )
+    if artifact is None:
+        raise HTTPException(status_code=404, detail="No such file in this job.")
+    if artifact.path:
+        try:
+            content = await asyncio.to_thread(storage.read, artifact.path)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail="The file for this artifact is missing.") from e
+        media_type = artifact.media_type
+    else:
+        content = (artifact.text or "").encode()
+        media_type = f"{artifact.media_type}; charset=utf-8"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'},
+    )
 
 
 @router.get("/jobs/{job_id}/events", response_class=EventSourceResponse)

@@ -300,7 +300,7 @@ export function App() {
           <BriefPanel brief={current.brief} source={current.source} />
           <div className="space-y-6">
             {current.outputs.map((o) => (
-              <OutputPanel key={o.name} result={o} />
+              <OutputPanel key={o.name} jobId={current.id} result={o} />
             ))}
           </div>
         </div>

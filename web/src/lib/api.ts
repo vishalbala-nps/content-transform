@@ -51,6 +51,15 @@ export function listSourceTypes(): Promise<string[]> {
   return request("/api/source-types")
 }
 
+// Where one of a job's artifacts downloads from, text or binary alike.
+export function artifactUrl(
+  jobId: string,
+  format: string,
+  filename: string
+): string {
+  return `/api/jobs/${jobId}/files/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`
+}
+
 export function listJobs(): Promise<JobSummary[]> {
   return request("/api/jobs")
 }

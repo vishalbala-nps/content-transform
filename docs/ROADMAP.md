@@ -5,7 +5,7 @@ browser. No slice is "build the persistence layer".
 
 Mark the current slice here so a fresh session knows where it is.
 
-**Current slice: S4**
+**Current slice: S5**
 
 ---
 
@@ -60,15 +60,24 @@ One ingester per sitting, each one module plus a line in
 - **S4b — PDF with a text layer (PyMuPDF).** Done. Blocks carry page
   numbers; a PDF with no text layer is refused with a clear 422. Checked with
   curl, a real Ollama job and by hand in the browser.
-- **S4c — HTML (trafilatura) and URL input.** Built. `.html` upload or a link;
+- **S4c — HTML (trafilatura) and URL input.** Done. `.html` upload or a link;
   a link to a PDF or DOCX goes through that ingester. Pages that only show an
-  "enable JavaScript" notice are refused. Checked with curl and a real Ollama
-  job from a CERT-In advisory URL; the URL box still needs a check by hand.
+  "enable JavaScript" notice are refused. Checked with curl, a real Ollama job
+  from a CERT-In advisory URL and by hand in the browser.
 - **Deferred — images and scanned PDFs**, read by a vision model into blocks.
   Needs Gemini quota or a vision model on Ollama; see DECISIONS.
 
 **Done when:** a CERT-In advisory, as a text PDF and as its web page, produces
 a brief whose claims cite the right blocks, with page numbers for the PDF.
+
+Done. A real CERT-In advisory PDF and a real CERT-In advisory page both give
+briefs whose claims cite the right blocks, checked on qwen3 (every claim
+cited; date, severity, products and solution each point at their own block).
+`qwen2.5:1.5b` sometimes returns no citations at all; the dev cache then
+replays that answer, so test citations with `LLM_CACHE=0`. Still open, see
+DECISIONS: pages that need JavaScript (iframe following, headless browser),
+failing a job whose brief has no claims, and an eval run for the citation
+schema change once evals resume.
 
 ## S5 — Renderers  ← highest value slice
 Advisory -> branded PDF (WeasyPrint). Presentation -> real .pptx with speaker
@@ -76,6 +85,16 @@ notes (python-pptx). Download buttons in the UI.
 
 This is where the project stops looking like a chat wrapper. Budget two
 sittings; do not rush it.
+
+- **S5a — file storage, downloads, exec summary PDF.** Built. Binary
+  artifacts are saved under `storage/artifacts/`, every artifact downloads
+  from its output card, and the executive summary adds a one-page WeasyPrint
+  PDF in the house style. Checked with curl and a real Ollama job; the
+  download buttons still need a check by hand in the browser.
+- **S5b — slide deck (python-pptx)** with speaker notes, plus a markdown outline.
+- **S5c — advisory PDF** for any source, not only security ones: a
+  government memo becomes a directive-style bulletin. Not public, so IOCs
+  may appear.
 
 **Done when:** a judge can download a .pptx and open it in PowerPoint.
 

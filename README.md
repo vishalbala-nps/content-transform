@@ -9,9 +9,13 @@ One-time setup:
 
 ```sh
 cp .env.example .env        # add your GEMINI_API_KEY
+brew install pango          # PDF rendering (WeasyPrint); .env.example points uv's Python at it
 uv sync
 cd web && npm install && cd ..
 ```
+
+Generated files (PDFs, and decks from S5b) are saved under
+`storage/artifacts/<job id>/` and download from each output's card.
 
 **Development** (UI hot reload), two terminals:
 

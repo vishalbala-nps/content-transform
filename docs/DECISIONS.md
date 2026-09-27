@@ -366,3 +366,54 @@ Considered and deferred:
 - A headless browser (Playwright + Chromium) to run page JavaScript: hundreds
   of MB, seconds per page and another demo-day failure point, for a case paste
   and PDF upload already cover.
+
+**2026-09-27 — S5a: binary artifacts, file storage, WeasyPrint PDFs.**
+- `Artifact` changed (frozen contract, agreed before editing): `text` is
+  optional, `data: bytes` carries a binary from `render()` and is never
+  serialised, and `path` is its storage key. `render()` stays free of I/O;
+  the job saves the bytes, then writes the result to the row, so a result on
+  the row always has its file. A crash between the two leaves an orphan file,
+  which is harmless.
+- Storage is `app/core/storage.py`, `save(key, data)` and `read(key)` over
+  `storage/artifacts/`, keyed `<job>/<format>/<filename>`. ARCHITECTURE's
+  "4-method interface" is two methods until something needs listing or
+  deleting.
+- One download route for every artifact, text or binary:
+  `GET /api/jobs/{id}/files/{format}/{filename}`. It finds the artifact on the
+  job row, so it can only serve what the job produced, never an arbitrary key.
+- Formats that render a file also return their text artifact, so Copy keeps
+  working: the exec summary is markdown plus a one-page PDF from one payload,
+  with no schema or prompt change.
+- Jinja2 added for templates: it autoescapes, and every value in a template
+  is model output. `string.Template` does not escape, and S6's SVG templates
+  need the same thing. Templates extend `render/templates/base.html`, one
+  fixed house style (A4, running header and footer) until S8's brand kit.
+- WeasyPrint gets a URL fetcher that allows no protocols, so nothing in a
+  payload can make it read a local file or the network. It is imported inside
+  `render_pdf`, so a machine without Pango fails the PDF formats with a clear
+  message instead of refusing to start.
+- WeasyPrint needs Pango (`brew install pango`). uv's Python does not search
+  Homebrew's lib directory, so `.env` sets
+  `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib`; it has to be in the
+  environment when the process starts, which `uv run --env-file` does.
+- `render()` runs in `asyncio.to_thread`: a PDF takes 0.1-0.3 s, a deck will
+  take longer, and either would stall every progress stream on the loop.
+
+**2026-09-27 — No plain-text rule in the exec summary prompt; Ollama cannot see field descriptions.**
+`qwen2.5:1.5b` sometimes writes markdown inside summary fields
+(`- **Threat level**: ...`), which the PDF prints literally. A prompt rule
+plus field descriptions asking for plain text was tried and reverted, since
+it measured no better. Old prompt against new, same brief each time, cache off:
+- qwen2.5:1.5b, 5 fixtures × 2: markdown in 1 of 10 summaries either way
+  (4 of 88 fields old, 2 of 80 new).
+- qwen3, 3 fixtures: none either way (0 of 35, 0 of 37).
+- Gemini, earlier eval runs: none (0 of 102 fields).
+So it is a quirk of the small dev model, not something the prompt needs.
+A Pydantic validator rejecting markdown would enforce it on any model
+through the existing retry, at the cost of a summary failing outright when
+the retry also has markdown; not worth it for a model used only for plumbing.
+Found along the way: Ollama's `format` only constrains decoding. The model
+never reads the JSON schema, so no `Field(description=...)` in any schema,
+the ContentBrief's included, reaches an Ollama model; only Gemini sees them.
+Ollama's docs recommend also putting the schema in the prompt. Doing that in
+`complete_json` would change every Ollama call, so it waits for evals.

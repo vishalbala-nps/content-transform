@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  /* House style for every PDF. Fixed until S8's brand kit replaces these values. */
+  :root {
+    --ink: #1a1f2b;
+    --muted: #5b6475;
+    --accent: #0b5cad;
+    --accent-soft: #eef4fb;
+    --rule: #d8dde6;
+  }
+
+  /* Margin boxes do not inherit from :root, so their colours are repeated here. */
+  @page {
+    size: A4;
+    margin: 24mm 20mm 22mm;
+    @top-left {
+      content: string(kind);
+      font: 600 7.5pt "Helvetica Neue", Arial, "DejaVu Sans", sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #0b5cad;
+      vertical-align: bottom;
+      padding-bottom: 3mm;
+    }
+    @top-right {
+      content: "Content Transform";
+      font: 7.5pt "Helvetica Neue", Arial, "DejaVu Sans", sans-serif;
+      color: #5b6475;
+      vertical-align: bottom;
+      padding-bottom: 3mm;
+    }
+    @bottom-left {
+      content: string(note);
+      font: 7.5pt "Helvetica Neue", Arial, "DejaVu Sans", sans-serif;
+      color: #5b6475;
+    }
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font: 7.5pt "Helvetica Neue", Arial, "DejaVu Sans", sans-serif;
+      color: #5b6475;
+    }
+  }
+
+  html {
+    font-family: "Helvetica Neue", Arial, "DejaVu Sans", sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+  body { margin: 0; }
+
+  /* Feed the running header and footer. Not display: none, which would never set the string. */
+  .kind { string-set: kind content(); height: 0; overflow: hidden; }
+  .note { string-set: note content(); height: 0; overflow: hidden; }
+
+  h1 {
+    font-size: 21pt;
+    line-height: 1.2;
+    font-weight: 700;
+    margin: 0 0 3mm;
+  }
+  h2 {
+    font-size: 9pt;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 8mm 0 2.5mm;
+    break-after: avoid;
+  }
+  p { margin: 0 0 2.5mm; }
+  li { break-inside: avoid; }
+
+  .source {
+    color: var(--muted);
+    font-size: 9pt;
+    padding-bottom: 5mm;
+    border-bottom: 0.6pt solid var(--rule);
+    margin-bottom: 6mm;
+  }
+
+  .callout {
+    background: var(--accent-soft);
+    border-left: 2.5pt solid var(--accent);
+    padding: 4mm 5mm;
+    font-size: 11.5pt;
+    line-height: 1.45;
+    break-inside: avoid;
+  }
+  .callout .label {
+    display: block;
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1.5mm;
+  }
+
+  ul.points { list-style: none; padding: 0; margin: 0; }
+  ul.points li {
+    position: relative;
+    padding: 0 0 0 5mm;
+    margin-bottom: 2.5mm;
+  }
+  ul.points li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 2mm;
+    width: 1.6mm;
+    height: 1.6mm;
+    background: var(--accent);
+  }
+
+  ol.steps { list-style: none; padding: 0; margin: 0; counter-reset: step; }
+  ol.steps li {
+    counter-increment: step;
+    position: relative;
+    padding: 0.3mm 0 0 8mm;
+    margin-bottom: 3mm;
+  }
+  ol.steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 5mm;
+    height: 5mm;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    font-size: 7.5pt;
+    font-weight: 700;
+    line-height: 5mm;
+    text-align: center;
+  }
+
+{% block style %}{% endblock %}
+</style>
+</head>
+<body>
+<div class="kind">{% block kind %}{% endblock %}</div>
+<div class="note">{% block note %}{% endblock %}</div>
+{% block content %}{% endblock %}
+</body>
+</html>

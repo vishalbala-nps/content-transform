@@ -21,6 +21,7 @@ from datetime import datetime
 
 from sqlalchemy import select, update
 
+from app.core import storage
 from app.core.llm import LLMError
 from app.db.models import Job, session
 from app.formats.base import GenerationConfig
@@ -98,6 +99,11 @@ def _next_queued() -> str | None:
 
 async def _run_and_save(job_id: str, name: str, brief: ContentBrief, config: GenerationConfig) -> None:
     result = await run_format(ADAPTERS[name], brief, config)  # never raises: errors are in the result
+    # Files first, then the row: a result on the row always has its files.
+    for artifact in result.artifacts:
+        if artifact.data is not None:
+            artifact.path = f"{job_id}/{name}/{artifact.filename}"
+            storage.save(artifact.path, artifact.data)
     with session() as s:
         job = s.get(Job, job_id)
         job.outputs = {**job.outputs, name: result.model_dump(mode="json")}

@@ -7,7 +7,7 @@ artifacts without calling a model.
 
 from typing import Literal, Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.understand.schemas import ContentBrief
 
@@ -25,11 +25,19 @@ class GenerationConfig(BaseModel):
 
 
 class Artifact(BaseModel):
-    filename: str  # "linkedin.md"
-    media_type: str  # "text/markdown"
-    text: str  # the full text: what Copy and Download use
+    """A text artifact carries `text`; a binary one (PDF, PPTX) carries `data`.
+
+    `render()` fills `data` and does no I/O. The job saves the bytes to storage
+    and records where in `path`; `data` itself is never serialised.
+    """
+
+    filename: str  # "linkedin.md", "exec_summary.pdf"
+    media_type: str  # "text/markdown", "application/pdf"
+    text: str | None = None  # the full text: what Copy uses
     parts: list[str] = []  # separately postable pieces, e.g. each tweet in a thread
     part_limit: int | None = None  # character limit per part, shown against each count
+    data: bytes | None = Field(default=None, exclude=True)  # binary content, straight from render()
+    path: str | None = None  # storage key of the saved bytes
 
 
 class OutputAdapter(Protocol):

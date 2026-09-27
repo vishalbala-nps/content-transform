@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block kind %}Executive summary{% endblock %}
+{% block note %}Written from the source's content brief. Check figures against the source before circulating.{% endblock %}
+{% block content %}
+<h1>{{ s.title }}</h1>
+<p class="source">{{ s.source_note }}</p>
+
+<div class="callout">
+  <span class="label">Bottom line</span>
+  {{ s.bottom_line }}
+</div>
+
+<h2>Key points</h2>
+<ul class="points">
+{% for point in s.key_points %}
+  <li>{{ point }}</li>
+{% endfor %}
+</ul>
+
+{% if s.actions %}
+<h2>Actions</h2>
+<ol class="steps">
+{% for action in s.actions %}
+  <li>{{ action }}</li>
+{% endfor %}
+</ol>
+{% endif %}
+{% endblock %}

@@ -88,11 +88,13 @@ field. Full definitions: `app/understand/schemas.py`.
 
 ```python
 class Artifact(BaseModel):
-    filename: str                  # "linkedin.md"
-    media_type: str                # "text/markdown"
-    text: str                      # the full text: what Copy and Download use
+    filename: str                  # "linkedin.md", "exec_summary.pdf"
+    media_type: str                # "text/markdown", "application/pdf"
+    text: str | None = None        # text artifacts: what Copy uses
     parts: list[str] = []          # separately postable pieces, e.g. each tweet
     part_limit: int | None = None  # character limit per part
+    data: bytes | None = None      # binary artifacts, from render(); never serialised
+    path: str | None = None        # storage key, set when the job saves `data`
 
 class OutputAdapter(Protocol):
     name: str                      # registry key and API id
@@ -112,8 +114,15 @@ class OutputAdapter(Protocol):
 - `check` returns soft warnings (over a character limit, too many hashtags).
   It never fails a job. Evals score with it, so a new format brings its own
   limits and the eval harness needs no edit.
-- `Artifact` is text-only until S5. Binary artefacts (PDF, PPTX, PNG) will
-  make `text` optional and add a storage path.
+- `render()` does no I/O. A binary artefact (PDF, PPTX, PNG) comes back as
+  bytes in `data`; the job saves them through `app/core/storage.py` before
+  writing the result to its row, and records the key in `path`. Text
+  artefacts stay on the row. Every artefact, text or binary, downloads from
+  `GET /api/jobs/{id}/files/{format}/{filename}`, which looks it up on the
+  row. `render()` runs in a worker thread, since PDF and PPTX rendering take
+  long enough to stall the event loop.
+- A format that renders a file also returns a text artefact where one makes
+  sense (the exec summary's markdown beside its PDF), so Copy still works.
 
 Adding a format touches exactly one new file plus one line in
 `app/formats/registry.py`. Full definitions: `app/formats/base.py`.

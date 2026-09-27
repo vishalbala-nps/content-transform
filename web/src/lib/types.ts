@@ -103,12 +103,15 @@ export interface ContentBrief {
   security: SecurityDetails | null
 }
 
+// A text artifact has `text`; a binary one (PDF, PPTX) has `path` instead.
+// Either kind downloads from artifactUrl() in lib/api.ts.
 export interface Artifact {
   filename: string
   media_type: string
-  text: string
+  text: string | null
   parts: string[]
   part_limit: number | null
+  path: string | null
 }
 
 export interface FormatInfo {

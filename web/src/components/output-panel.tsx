@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Check, Copy } from "lucide-react"
+import { Check, Copy, Download } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -7,9 +7,11 @@ import {
   CardAction,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { artifactUrl } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { Artifact, FormatResult } from "@/lib/types"
 
@@ -33,6 +35,7 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
+// Text artifacts only; binary ones are offered in the footer.
 function ArtifactBody({ artifact }: { artifact: Artifact }) {
   if (artifact.parts.length === 0) {
     return <div className="whitespace-pre-wrap">{artifact.text}</div>
@@ -60,12 +63,33 @@ function ArtifactBody({ artifact }: { artifact: Artifact }) {
 
 function describe(artifact: Artifact): string {
   if (artifact.parts.length > 0) return `${artifact.parts.length} parts`
-  return `${artifact.text.length} characters`
+  return `${artifact.text?.length ?? 0} characters`
 }
 
-export function OutputPanel({ result }: { result: FormatResult }) {
-  // Every format returns one artifact until S5 adds binary files beside text.
-  const artifact = result.artifacts[0]
+const FILE_KINDS: Record<string, string> = {
+  "text/markdown": "Markdown",
+  "application/pdf": "PDF",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+    "PowerPoint",
+}
+
+function fileKind(artifact: Artifact): string {
+  return (
+    FILE_KINDS[artifact.media_type] ??
+    artifact.filename.split(".").pop()?.toUpperCase() ??
+    artifact.filename
+  )
+}
+
+export function OutputPanel({
+  jobId,
+  result,
+}: {
+  jobId: string
+  result: FormatResult
+}) {
+  // The text artifact, if any, is what Copy and the description use.
+  const artifact = result.artifacts.find((a) => a.text !== null)
 
   return (
     <Card>
@@ -76,7 +100,7 @@ export function OutputPanel({ result }: { result: FormatResult }) {
         </CardDescription>
         {artifact && (
           <CardAction>
-            <CopyButton text={artifact.text} />
+            <CopyButton text={artifact.text ?? ""} />
           </CardAction>
         )}
       </CardHeader>
@@ -93,10 +117,28 @@ export function OutputPanel({ result }: { result: FormatResult }) {
             ))}
           </ul>
         )}
-        {result.artifacts.map((a) => (
-          <ArtifactBody key={a.filename} artifact={a} />
-        ))}
+        {result.artifacts
+          .filter((a) => a.text !== null)
+          .map((a) => (
+            <ArtifactBody key={a.filename} artifact={a} />
+          ))}
       </CardContent>
+      {result.artifacts.length > 0 && (
+        <CardFooter className="flex flex-wrap gap-2">
+          {result.artifacts.map((a) => (
+            <Button key={a.filename} variant="outline" size="sm" asChild>
+              <a
+                href={artifactUrl(jobId, result.name, a.filename)}
+                download={a.filename}
+                title={a.filename}
+              >
+                <Download />
+                {fileKind(a)}
+              </a>
+            </Button>
+          ))}
+        </CardFooter>
+      )}
     </Card>
   )
 }

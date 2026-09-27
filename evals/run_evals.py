@@ -55,7 +55,7 @@ def score_brief(brief: ContentBrief, exp: dict) -> dict:
 def score_format(result: FormatResult, brief: ContentBrief, exp: dict) -> dict:
     if result.error:
         return {"error": result.error}
-    text = "\n".join(a.text for a in result.artifacts)
+    text = "\n".join(a.text for a in result.artifacts if a.text is not None)
     # Numbers the model wrote that appear nowhere in the brief it was given.
     known = set(NUMBER.findall(brief_for_prompt(brief, public=False)))
     written = set(NUMBER.findall(json.dumps(result.payload, ensure_ascii=False)))
@@ -84,7 +84,10 @@ async def run_fixture(name: str, exp: dict, formats: list[str], out: Path) -> di
         else:
             (fmt_dir / "payload.json").write_text(json.dumps(result.payload, indent=2, ensure_ascii=False))
         for artifact in result.artifacts:
-            (fmt_dir / artifact.filename).write_text(artifact.text)
+            if artifact.data is not None:
+                (fmt_dir / artifact.filename).write_bytes(artifact.data)
+            else:
+                (fmt_dir / artifact.filename).write_text(artifact.text or "")
         scores[result.name] = score_format(result, brief, exp)
     return {"brief": score_brief(brief, exp), "formats": scores}
 

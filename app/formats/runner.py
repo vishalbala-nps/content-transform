@@ -25,7 +25,8 @@ class FormatResult(BaseModel):
 async def run_format(adapter: OutputAdapter, brief: ContentBrief, config: GenerationConfig) -> FormatResult:
     try:
         payload = await complete_json(adapter.schema, adapter.prompt(brief, config))
-        artifacts = adapter.render(payload, config)
+        # Off the event loop: a PDF or deck takes long enough to stall progress streams.
+        artifacts = await asyncio.to_thread(adapter.render, payload, config)
         warnings = adapter.check(payload, artifacts)
     except Exception as e:
         # Anything else is a bug in the adapter, but it still must not take
