@@ -277,3 +277,27 @@ reading. Details:
   text ingester.
 - DOCX structure comes from paragraph styles and Word numbering, plus typed
   bullets. Headings made only with bold or large text are read as paragraphs.
+
+**2026-09-27 — S4b PDF ingester: layout rules, no layout model.**
+PyMuPDF gives text lines with size, weight and position; `app/ingest/pdf.py`
+turns them into blocks with page numbers using plain rules, not a layout
+model (PyMuPDF suggests its `pymupdf_layout` add-on; not needed yet):
+- Headings are lines at least 15% larger than the body size (levels by size)
+  or short standalone bold lines, which is how advisories label sections.
+- Lists are lines starting with a bullet or number, or an indented block of
+  short lines, since Chrome and others draw bullets as graphics.
+- Tables come from `find_tables()`. Anything over 12 columns or mostly empty
+  is a figure the finder misread, and is read as text instead.
+- Running headers and footers (repeated in the page margins, page numbers
+  aside) are dropped. Vertical margin text is skipped.
+- Blocks keep the PDF's stored order rather than being sorted by position:
+  sorting interleaves the columns of two-column layouts.
+- The title is the top-level heading on page 1, since the first heading can
+  be a notice or banner.
+- A PDF with no text on any page is refused as scanned; pages without text in
+  an otherwise text PDF are listed in `meta["pages_without_text"]`.
+Tested on Chrome-printed advisories (headers, graphic bullets, a ruled
+table, two columns), scanned, mixed, encrypted and corrupt files, and a
+15-page two-column arXiv paper (under a second). Known weak spots: author
+grids on title pages and hanging-indent reference lists split oddly, and
+tables without vertical rules can run cells together.

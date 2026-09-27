@@ -10,6 +10,7 @@ from pathlib import PurePath
 from app.ingest.base import SourceDocument
 from app.ingest.common import IngestError
 from app.ingest.docx import ingest_docx
+from app.ingest.pdf import ingest_pdf
 from app.ingest.text import ingest_text
 
 
@@ -25,6 +26,7 @@ INGESTERS: dict[str, Callable[[bytes], SourceDocument]] = {
     ".txt": _ingest_text_file,
     ".md": _ingest_text_file,
     ".docx": ingest_docx,
+    ".pdf": ingest_pdf,
 }
 
 

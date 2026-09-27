@@ -24,6 +24,18 @@ class Part(NamedTuple):
     page: int | None = None
 
 
+def markdown_table(rows: list[list[str]]) -> str:
+    """Cell text in, a markdown table out; "" if every cell is empty. The first row is the header."""
+    rows = [[" ".join(c.split()).replace("|", "\\|") for c in r] for r in rows]
+    rows = [r for r in rows if any(r)]
+    if not rows:
+        return ""
+    width = max(len(r) for r in rows)
+    lines = ["| " + " | ".join(r + [""] * (width - len(r))) + " |" for r in rows]
+    lines.insert(1, "|" + " --- |" * width)
+    return "\n".join(lines)
+
+
 def assemble(parts: list[Part], mime: str, fallback_title: str | None = None) -> SourceDocument:
     """Blocks get ids b1, b2, ... in order. The title is the first heading, else `fallback_title`."""
     blocks = [

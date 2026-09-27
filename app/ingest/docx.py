@@ -21,7 +21,7 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 
 from app.ingest.base import SourceDocument
-from app.ingest.common import IngestError, Part, assemble
+from app.ingest.common import IngestError, Part, assemble, markdown_table
 
 MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -66,17 +66,10 @@ def _table_markdown(table: Table) -> str:
         cells, prev = [], None
         for cell in row.cells:
             # A merged cell is returned once per grid column it spans.
-            cells.append("" if cell._tc is prev else _clean(cell.text).replace("|", "\\|"))
+            cells.append("" if cell._tc is prev else cell.text)
             prev = cell._tc
         rows.append(cells)
-    rows = [r for r in rows if any(r)]
-    if not rows:
-        return ""
-    width = max(len(r) for r in rows)
-    rows = [r + [""] * (width - len(r)) for r in rows]
-    lines = ["| " + " | ".join(r) + " |" for r in rows]
-    lines.insert(1, "|" + " --- |" * width)
-    return "\n".join(lines)
+    return markdown_table(rows)
 
 
 def ingest_docx(data: bytes) -> SourceDocument:
