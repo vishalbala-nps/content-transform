@@ -145,8 +145,8 @@ constraints still hold.
 ```
 app/
   core/          config.py, llm.py, jobs.py, storage.py
-  ingest/        base.py, common.py, registry.py, text.py, docx.py, pdf.py,
-                 html.py, image.py
+  ingest/        base.py, common.py, registry.py, url.py, text.py, docx.py,
+                 pdf.py, html.py, image.py
   understand/    brief.py, schemas.py, prompts/
   formats/       base.py, registry.py, runner.py, brief_view.py,
                  linkedin.py, x_thread.py, advisory.py,

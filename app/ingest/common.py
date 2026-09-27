@@ -11,6 +11,10 @@ from typing import NamedTuple
 from app.ingest.base import Block, SourceDocument
 
 
+# Largest file accepted, uploaded or downloaded from a URL.
+MAX_FILE_BYTES = 20 * 1024 * 1024
+
+
 class IngestError(Exception):
     def __init__(self, message: str, status: int = 422):
         super().__init__(message)

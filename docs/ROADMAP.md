@@ -60,7 +60,10 @@ One ingester per sitting, each one module plus a line in
 - **S4b — PDF with a text layer (PyMuPDF).** Done. Blocks carry page
   numbers; a PDF with no text layer is refused with a clear 422. Checked with
   curl, a real Ollama job and by hand in the browser.
-- **S4c — HTML (trafilatura).**
+- **S4c — HTML (trafilatura) and URL input.** Built. `.html` upload or a link;
+  a link to a PDF or DOCX goes through that ingester. Pages that only show an
+  "enable JavaScript" notice are refused. Checked with curl and a real Ollama
+  job from a CERT-In advisory URL; the URL box still needs a check by hand.
 - **Deferred — images and scanned PDFs**, read by a vision model into blocks.
   Needs Gemini quota or a vision model on Ollama; see DECISIONS.
 

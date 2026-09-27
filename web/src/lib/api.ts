@@ -37,6 +37,15 @@ export function createJobFromFile(file: File, formats: string[]): Promise<Job> {
   return request("/api/jobs/upload", { method: "POST", body })
 }
 
+// The server downloads the page (or PDF, DOCX...) at `url` and ingests it.
+export function createJobFromUrl(url: string, formats: string[]): Promise<Job> {
+  return request("/api/jobs/url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, formats }),
+  })
+}
+
 // File extensions an upload may have, e.g. ".docx".
 export function listSourceTypes(): Promise<string[]> {
   return request("/api/source-types")

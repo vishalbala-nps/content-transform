@@ -13,9 +13,10 @@ from app.formats.base import GenerationConfig
 from app.formats.registry import ADAPTERS
 from app.formats.runner import FormatResult
 from app.ingest.base import SourceDocument
-from app.ingest.common import IngestError
+from app.ingest.common import MAX_FILE_BYTES, IngestError
 from app.ingest.registry import INGESTERS, ingest_file
 from app.ingest.text import ingest_text
+from app.ingest.url import ingest_url
 from app.understand.schemas import ContentBrief
 
 router = APIRouter(prefix="/api")
@@ -23,9 +24,8 @@ router = APIRouter(prefix="/api")
 # How often the event stream checks the job row for changes.
 POLL_S = 0.5
 
-# Longest source accepted, pasted or extracted from a file.
+# Longest source accepted, pasted or extracted from a file or a page.
 MAX_SOURCE_CHARS = 100_000
-MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 
 class FormatInfo(BaseModel):
@@ -35,6 +35,11 @@ class FormatInfo(BaseModel):
 
 class JobRequest(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_SOURCE_CHARS)
+    formats: list[str] = Field(min_length=1)
+
+
+class UrlJobRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2_000)
     formats: list[str] = Field(min_length=1)
 
 
@@ -162,22 +167,38 @@ async def create_job_from_file(
     file: Annotated[UploadFile, File()], formats: Annotated[list[str], Form()]
 ) -> JobView:
     names = _format_names(formats)
-    data = await file.read(MAX_UPLOAD_BYTES + 1)
-    if len(data) > MAX_UPLOAD_BYTES:
+    data = await file.read(MAX_FILE_BYTES + 1)
+    if len(data) > MAX_FILE_BYTES:
         raise HTTPException(
-            status_code=413, detail=f"Files over {MAX_UPLOAD_BYTES // 2**20} MB are not accepted."
+            status_code=413, detail=f"Files over {MAX_FILE_BYTES // 2**20} MB are not accepted."
         )
     try:
         # Parsing is CPU-bound; off the event loop so progress streams keep flowing.
         source = await asyncio.to_thread(ingest_file, file.filename or "", data)
     except IngestError as e:
         raise HTTPException(status_code=e.status, detail=str(e)) from e
+    return _create_ingested_job(source, names, "the file")
+
+
+@router.post("/jobs/url", response_model=JobView, status_code=201)
+async def create_job_from_url(req: UrlJobRequest) -> JobView:
+    names = _format_names(req.formats)
+    try:
+        source = await ingest_url(req.url.strip())
+    except IngestError as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
+    return _create_ingested_job(source, names, "the page")
+
+
+def _create_ingested_job(source: SourceDocument, names: list[str], what: str) -> JobView:
+    """Checks shared by uploads and URLs, which only find out how much text there is after parsing."""
     if not source.blocks:
-        raise HTTPException(status_code=422, detail="No text found in the file.")
+        raise HTTPException(status_code=422, detail=f"No text found in {what}.")
     if len(source.markdown) > MAX_SOURCE_CHARS:
         raise HTTPException(
             status_code=422,
-            detail=f"The file has {len(source.markdown):,} characters of text; the limit is {MAX_SOURCE_CHARS:,}.",
+            detail=f"{what.capitalize()} has {len(source.markdown):,} characters of text; "
+            f"the limit is {MAX_SOURCE_CHARS:,}.",
         )
     return _view(jobs.create_job(source, names, GenerationConfig()))
 

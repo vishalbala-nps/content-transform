@@ -319,3 +319,50 @@ schema kept 0 valid claim citations in 3 runs, the new one kept all of them
 in 3 runs; on qwen3 both schemas gave the same brief (17-18 claims, all
 cited). A 225-block paper works too (qwen3: 10 of 10 claims cited, 160 s).
 Not yet run on Gemini; evals paused, so not scored.
+
+**2026-09-27 — S4c HTML ingester and URL input.**
+- HTML goes through trafilatura, added for boilerplate removal; the stdlib
+  parser would leave that to us. Its XML output (not its markdown) is walked
+  into blocks, so block types come from elements, not from re-parsing text.
+- `favor_recall=True`. Default mode dropped whole lists (the affected
+  versions in an advisory); precision mode dropped most of a real CERT-In
+  advisory.
+- CERT-In lays pages out with tables and trafilatura keeps every cell, menus
+  and footers included. A table whose cells hold paragraphs is read as layout,
+  and when one layout cell holds 60% or more of the text, only that cell is
+  kept. Pages without layout tables never hit this rule.
+- Bold-only short paragraphs are headings, as in the PDF ingester. CERT-In's
+  section labels are bold through CSS, which trafilatura cannot see, so they
+  stay paragraphs: still separate, citable blocks.
+- trafilatura can drop the headings at the top of a page with no `<article>`
+  or `<main>`. The page's first `<h1>` goes back in if it was lost; `<title>`
+  is not used for this, since CERT-In's is "Advisories" or "Vulnerability".
+- `POST /api/jobs/url` downloads with httpx (already a dependency, so not
+  trafilatura's fetcher), 20 s timeout, same 20 MB cap as uploads. The
+  response's content type picks the ingester, so a link to a PDF or DOCX
+  works too. `meta["source_url"]` records the final URL after redirects.
+- The server fetches any http(s) URL it is given, including addresses on its
+  own network. Acceptable for a local, single-user tool with no auth (see
+  "Out of scope"); a reason not to expose it publicly as it stands.
+- Tested on two real CERT-In pages (advisory and vulnerability note), a
+  Wikipedia article, an undeclared Latin-1 page and a PDF link. A full job
+  from a real CERT-In advisory URL cited real blocks and filled the security
+  block with the right CVEs, product and versions.
+
+**2026-09-27 — Pages that need JavaScript are refused, not rendered.**
+A PIB press release link produced only "JavaScript must be enabled...", and
+every format was then written about that notice. The page is PIB's site
+shell: the release loads in a same-site iframe, and the shell's only prose is
+a `<noscript>` warning. The HTML ingester now drops short "enable JavaScript"
+notices from any page, and if under 200 characters of paragraph or table text
+remain (menus arrive as lists and do not count), refuses the page with a 422
+telling the user to paste the text or upload the page saved as PDF.
+Considered and deferred:
+- Following same-site iframes. It would fix PIB (the iframe holds 6,295
+  characters of release text against the shell's 257), but it is a rule for
+  one kind of site so far.
+- Failing a job whose brief has no claims. Formats currently write from an
+  empty brief; this guard would catch any bad source, not only this kind.
+- A headless browser (Playwright + Chromium) to run page JavaScript: hundreds
+  of MB, seconds per page and another demo-day failure point, for a case paste
+  and PDF upload already cover.

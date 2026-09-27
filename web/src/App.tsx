@@ -7,11 +7,13 @@ import { JobProgress } from "@/components/job-progress"
 import { OutputPanel } from "@/components/output-panel"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
   createJob,
   createJobFromFile,
+  createJobFromUrl,
   isFinished,
   listFormats,
   listJobs,
@@ -43,8 +45,10 @@ function statusText(job: Job): string {
 
 export function App() {
   const [text, setText] = useState("")
-  // A chosen file replaces the pasted text as the source.
+  // A chosen file, else a link, replaces the pasted text as the source.
+  // Choosing one clears the other.
   const [file, setFile] = useState<File | null>(null)
+  const [url, setUrl] = useState("")
   const [sourceTypes, setSourceTypes] = useState<string[]>([])
   const fileInput = useRef<HTMLInputElement>(null)
   const [formats, setFormats] = useState<FormatInfo[]>([])
@@ -102,6 +106,7 @@ export function App() {
         if (fillForm.current) {
           fillForm.current = false
           setFile(null)
+          setUrl("")
           setText(j.source.markdown)
           setSelected(new Set(j.formats))
         }
@@ -138,8 +143,9 @@ export function App() {
   }
 
   async function run() {
-    if (!file && !text.trim()) {
-      setError("Paste some text or choose a file first.")
+    const link = url.trim()
+    if (!file && !link && !text.trim()) {
+      setError("Paste some text, upload a file or enter a link first.")
       return
     }
     if (selected.size === 0) {
@@ -153,7 +159,9 @@ export function App() {
       const names = formats.map((f) => f.name).filter((n) => selected.has(n))
       const created = file
         ? await createJobFromFile(file, names)
-        : await createJob(text, names)
+        : link
+          ? await createJobFromUrl(link, names)
+          : await createJob(text, names)
       setJob(created)
       openJob(created.id, false)
       refreshHistory()
@@ -177,54 +185,71 @@ export function App() {
           placeholder={
             file
               ? `Using ${file.name}. Remove the file to paste text instead.`
-              : "Paste an article, report or advisory…"
+              : url.trim()
+                ? `Using ${url.trim()}. Clear the link to paste text instead.`
+                : "Paste an article, report or advisory…"
           }
-          disabled={file !== null}
+          disabled={file !== null || url.trim() !== ""}
           className="min-h-56"
         />
-        {sourceTypes.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <input
-              ref={fileInput}
-              type="file"
-              accept={sourceTypes.join(",")}
-              className="sr-only"
-              tabIndex={-1}
-              aria-hidden
-              onChange={(e) => {
-                setFile(e.target.files?.[0] ?? null)
-                setError(null)
-                // Lets the same file be chosen again after removing it.
-                e.target.value = ""
-              }}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fileInput.current?.click()}
-            >
-              <FileUp />
-              {file ? "Choose another file" : "Or upload a file"}
-            </Button>
-            {file ? (
-              <span className="flex items-center gap-1">
-                {file.name}
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label="Remove file"
-                  onClick={() => setFile(null)}
-                >
-                  <X />
-                </Button>
-              </span>
-            ) : (
-              <span className="text-muted-foreground">
-                {sourceTypes.join(", ")}
-              </span>
-            )}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          {sourceTypes.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={fileInput}
+                type="file"
+                accept={sourceTypes.join(",")}
+                className="sr-only"
+                tabIndex={-1}
+                aria-hidden
+                onChange={(e) => {
+                  setFile(e.target.files?.[0] ?? null)
+                  setUrl("")
+                  setError(null)
+                  // Lets the same file be chosen again after removing it.
+                  e.target.value = ""
+                }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInput.current?.click()}
+              >
+                <FileUp />
+                {file ? "Choose another file" : "Or upload a file"}
+              </Button>
+              {file ? (
+                <span className="flex items-center gap-1">
+                  {file.name}
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Remove file"
+                    onClick={() => setFile(null)}
+                  >
+                    <X />
+                  </Button>
+                </span>
+              ) : (
+                <span className="text-muted-foreground">
+                  {sourceTypes.join(", ")}
+                </span>
+              )}
+            </div>
+          )}
+          <Input
+            type="url"
+            value={url}
+            onChange={(e) => {
+              setUrl(e.target.value)
+              setFile(null)
+              setError(null)
+            }}
+            placeholder="Or paste a link to a web page or document: https://…"
+            aria-label="Source link"
+            className="h-7 min-w-64 flex-1"
+          />
+        </div>
       </div>
 
       <fieldset className="space-y-2">
