@@ -135,3 +135,17 @@ on structured CVEs, products, severity and IOCs); it is just no longer in the
 way for other sources. `mitigations` moved out of security into a general
 `actions` list with block support: government memos have directives and
 reports have recommendations, and exec summaries need them regardless of domain.
+
+**2026-09-27 — S1b frontend setup.**
+Scaffolded with `shadcn init -t vite` (React 19, Vite 8, Tailwind 4, Radix
+components, TypeScript). Kept the template's tooling as generated (ESLint,
+Prettier, theme provider that follows the system dark mode). Decisions:
+- The template uses `cn` (published by shadcn) as its class-merge helper
+  instead of `clsx` + `tailwind-merge`; kept, since the shadcn CLI generates
+  components against it.
+- API types in `web/src/lib/types.ts` are hand-written mirrors of the Pydantic
+  contracts. Generating them from FastAPI's OpenAPI schema would add a codegen
+  step and a dependency; not worth it while the contracts are frozen. Revisit
+  if they start drifting.
+- One process in demo: FastAPI serves `web/dist` when it exists. In dev, Vite
+  proxies `/api` to FastAPI. No Node server in production.
