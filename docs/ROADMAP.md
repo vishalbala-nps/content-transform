@@ -5,7 +5,7 @@ browser. No slice is "build the persistence layer".
 
 Mark the current slice here so a fresh session knows where it is.
 
-**Current slice: S6**
+**Current slice: S7**, then S6 (reordered 2026-09-27, see DECISIONS)
 
 ---
 
@@ -107,7 +107,7 @@ Done. Decks download from the browser and open in PowerPoint; the executive
 summary and the advisory download as PDFs. Open for evals: invented numbers
 in speaker notes, and press-release claims stated rather than attributed.
 
-## S6 — Infographic
+## S6 — Infographic  ← after S7
 Write three or four SVG templates **by hand first** (stat grid, timeline,
 comparison, process flow), then write the schema and prompt to fill them.
 Doing it the other way round produces schemas the templates cannot render.

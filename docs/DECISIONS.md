@@ -482,3 +482,13 @@ Ollama's docs recommend also putting the schema in the prompt. Doing that in
   the PDF's text layer exactly as in the brief. `qwen2.5:1.5b` runs all five
   formats in one job. Open for evals: the press release's claims were stated
   rather than attributed to the company.
+
+**2026-09-27 — S7 (grounding and review) before S6 (infographic).**
+Neither slice depends on the other. S6 is one more format on the S5 pattern;
+S7 works across all formats, and an infographic has almost no prose to
+ground. S7's per-section regeneration is to be written generically over
+formats, so the infographic joins it when S6 lands. S7's real dependencies
+are brief citations (reliable on qwen3, sometimes empty on qwen2.5:1.5b, so
+test on qwen3 with `LLM_CACHE=0`) and a way to score grounding, which the
+paused evals would provide. Failing a job whose brief has no claims, still
+open from S4, belongs in S7.
