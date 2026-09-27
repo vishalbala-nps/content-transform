@@ -86,12 +86,15 @@ notes (python-pptx). Download buttons in the UI.
 This is where the project stops looking like a chat wrapper. Budget two
 sittings; do not rush it.
 
-- **S5a — file storage, downloads, exec summary PDF.** Built. Binary
+- **S5a — file storage, downloads, exec summary PDF.** Done. Binary
   artifacts are saved under `storage/artifacts/`, every artifact downloads
   from its output card, and the executive summary adds a one-page WeasyPrint
-  PDF in the house style. Checked with curl and a real Ollama job; the
-  download buttons still need a check by hand in the browser.
-- **S5b — slide deck (python-pptx)** with speaker notes, plus a markdown outline.
+  PDF in the house style. Checked with curl, a real Ollama job and by hand
+  in the browser.
+- **S5b — slide deck (python-pptx).** Done. Title slide, key figures, 4-7
+  content slides, speaker notes on every slide, plus a markdown outline.
+  Checked with curl, real Ollama jobs (qwen3 and qwen2.5:1.5b), by opening
+  the decks in PowerPoint and by hand in the browser.
 - **S5c — advisory PDF** for any source, not only security ones: a
   government memo becomes a directive-style bulletin. Not public, so IOCs
   may appear.

@@ -417,3 +417,35 @@ never reads the JSON schema, so no `Field(description=...)` in any schema,
 the ContentBrief's included, reaches an Ollama model; only Gemini sees them.
 Ollama's docs recommend also putting the schema in the prompt. Doing that in
 `complete_json` would change every Ollama call, so it waits for evals.
+
+**2026-09-27 — S5b: slide deck with python-pptx.**
+- New format `deck` ("Slide deck"): one module, one registry line, and
+  `render/pptx.py`. Nothing in the API, the UI or the other formats changed;
+  the panel's download button and "PowerPoint" label came from S5a.
+- The model fills content, code fixes the order: title slide, a key-figures
+  slide when the brief has stats (up to 4, values verbatim), then 4-7 content
+  slides of 2-4 bullets. No per-slide "kind" for the model to choose: every
+  layout decision it could get wrong is one less. Every slide has speaker
+  notes. Titles are takeaways ("Attackers are already exploiting the flaw"),
+  not topic labels. Output is the .pptx plus a markdown outline with the
+  notes, for Copy and for reading without PowerPoint.
+- Not public, like the exec summary: an internal briefing deck. It says
+  whether indicators of compromise exist without listing them.
+- Limits are in the prompt as well as the schema, since Ollama models never
+  see field descriptions. Over-long titles and bullets are `check()` warnings.
+- `render/pptx.py` is a builder with one method per slide kind and knows
+  nothing about the deck payload. Default template, resized to 16:9, colours
+  from the PDF house style, Arial (on every PowerPoint and Keynote install).
+  Titles stay real title placeholders, restyled, so outline view, the slide
+  navigator and screen readers find them. Bullets are written as OXML
+  (`a:buChar`), since python-pptx has no bullet API. Key-figure values share
+  one size, chosen so the longest fits on one line (24-44 pt).
+- `python-pptx` added (named in CLAUDE.md); it brings `xlsxwriter` with it.
+- Checked in Microsoft PowerPoint itself: decks are opened and exported to
+  PDF through AppleScript, which is also the roadmap's "opens in PowerPoint"
+  test. On qwen3, three fixtures gave valid decks first time (4-7 slides, one
+  bullet over the word limit). One deck's speaker notes said "over 3,000
+  appliances" where the brief says 4,200; the eval harness's invented-numbers
+  score reads the whole payload, notes included, so it will measure this once
+  evals resume, rather than the prompt being tuned on one output.
+  `qwen2.5:1.5b` fills the schema too (all four formats in one job).
