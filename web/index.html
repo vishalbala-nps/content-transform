@@ -1,0 +1,84 @@
+<!doctype html>
+<!-- S0 placeholder. Replaced by the React + Vite app in S1. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Content Transform</title>
+  <style>
+    :root { color-scheme: light dark; --border: #8884; --muted: #888; }
+    body { font: 16px/1.5 system-ui, sans-serif; max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+    h1 { font-size: 1.25rem; margin: 0 0 16px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; }
+    textarea { width: 100%; box-sizing: border-box; min-height: 220px; padding: 10px; font: inherit;
+               border: 1px solid var(--border); border-radius: 6px; resize: vertical; }
+    .row { display: flex; gap: 12px; align-items: center; margin: 12px 0 24px; }
+    button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
+    #status { color: var(--muted); font-size: .9rem; }
+    #status.error { color: #d33; }
+    #output { white-space: pre-wrap; border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+    #result[hidden] { display: none; }
+    .result-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Content Transform</h1>
+
+  <label for="source">Source text</label>
+  <textarea id="source" placeholder="Paste an article, report or advisory…"></textarea>
+
+  <div class="row">
+    <button id="go">Generate LinkedIn post</button>
+    <span id="status" role="status"></span>
+  </div>
+
+  <section id="result" hidden>
+    <div class="result-head">
+      <label>LinkedIn post</label>
+      <button id="copy">Copy</button>
+    </div>
+    <div id="output"></div>
+  </section>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const setStatus = (msg, isError = false) => {
+      $("status").textContent = msg;
+      $("status").classList.toggle("error", isError);
+    };
+
+    $("go").addEventListener("click", async () => {
+      const text = $("source").value.trim();
+      if (!text) return setStatus("Paste some text first.", true);
+
+      $("go").disabled = true;
+      setStatus("Generating…");
+      try {
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+          throw new Error(detail || `HTTP ${res.status}`);
+        }
+        $("output").textContent = body.post;
+        $("result").hidden = false;
+        setStatus(`${body.post.length} characters`);
+      } catch (err) {
+        setStatus(err.message, true);
+      } finally {
+        $("go").disabled = false;
+      }
+    });
+
+    $("copy").addEventListener("click", async () => {
+      await navigator.clipboard.writeText($("output").textContent);
+      setStatus("Copied.");
+    });
+  </script>
+</body>
+</html>
