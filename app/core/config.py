@@ -11,5 +11,5 @@ class Settings:
 def get_settings() -> Settings:
     return Settings(
         gemini_api_key=os.environ.get("GEMINI_API_KEY"),
-        gemini_model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+        gemini_model=os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite"),
     )

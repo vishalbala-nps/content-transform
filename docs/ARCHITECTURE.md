@@ -60,17 +60,29 @@ class Claim(BaseModel):
 class ContentBrief(BaseModel):
     brief_id: str
     doc_id: str
+    title: str
+    source: SourceProfile  # kind, origin, published, tone
     tldr: str
     claims: list[Claim]
     entities: list[Entity]
-    timeline: list[TimelineItem]
-    stats: list[Stat]
-    domain: DomainFields   # kind: security | general, plus kind-specific fields
-    angles: dict[str, str] # exec, technical, public
+    timeline: list[TimelineItem]   # when, event, support
+    stats: list[Stat]              # value, label, support
+    actions: list[Action]          # text, support: mitigations, directives, recommendations
+    security: SecurityDetails | None   # domain extension, null unless security
 ```
 
-For the security domain, `DomainFields` carries CVE ids, affected products and
-versions, severity, IOCs and mitigations. Other domains leave it sparse.
+The brief is tone-neutral: claims are written plainly whatever the source's
+tone, so any output tone can be produced from it. `SourceProfile`
+describes the source (news article, government memo, advisory...) and who
+issued it, so outputs can attribute claims instead of stating a reporter's
+claim with the authority of an official directive. Choosing what to emphasise
+for a given audience is the format prompt's job, driven by `GenerationConfig`.
+
+Everything above `security` is general and applies to any source. Domains
+are optional extension blocks: `SecurityDetails` carries CVE ids, affected
+products and versions, severity, CVSS score and IOCs, and is null for a
+non-security source. A new domain is one more `<domain>: <Domain>Details | None`
+field. Full definitions: `app/understand/schemas.py`.
 
 ## Contract 3 — OutputAdapter
 

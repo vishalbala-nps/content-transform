@@ -1,14 +1,16 @@
 <!doctype html>
-<!-- S0 placeholder. Replaced by the React + Vite app in S1. -->
+<!-- S1a static page. Replaced by the React + Vite app in S1b. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Content Transform</title>
   <style>
-    :root { color-scheme: light dark; --border: #8884; --muted: #888; }
-    body { font: 16px/1.5 system-ui, sans-serif; max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+    :root { color-scheme: light dark; --border: #8884; --muted: #888; --chip: #8882; --accent: #b36b00; }
+    body { font: 16px/1.5 system-ui, sans-serif; max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
     h1 { font-size: 1.25rem; margin: 0 0 16px; }
+    h2 { font-size: 1rem; margin: 0 0 10px; }
+    h3 { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 18px 0 6px; }
     label { display: block; font-weight: 600; margin-bottom: 6px; }
     textarea { width: 100%; box-sizing: border-box; min-height: 220px; padding: 10px; font: inherit;
                border: 1px solid var(--border); border-radius: 6px; resize: vertical; }
@@ -17,9 +19,22 @@
     button:disabled { opacity: .5; cursor: default; }
     #status { color: var(--muted); font-size: .9rem; }
     #status.error { color: #d33; }
-    #output { white-space: pre-wrap; border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
     #result[hidden] { display: none; }
-    .result-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .panels { display: grid; grid-template-columns: 1fr; gap: 20px; }
+    @media (min-width: 860px) { .panels { grid-template-columns: 1fr 1fr; align-items: start; } }
+    .panel { border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 0; }
+    .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    #output { white-space: pre-wrap; }
+    .meta { color: var(--muted); font-size: .85rem; }
+    ul.items { margin: 0; padding-left: 18px; }
+    ul.items li { margin-bottom: 4px; }
+    .chip { display: inline-block; font-size: .75rem; padding: 0 6px; margin-left: 4px; border-radius: 4px;
+            background: var(--chip); cursor: help; font-family: ui-monospace, monospace; }
+    .chip.none { color: var(--accent); background: none; border: 1px dashed var(--accent); cursor: default; }
+    .kind { font-size: .75rem; color: var(--muted); }
+    dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; }
+    dt { font-weight: 600; }
+    dd { margin: 0; overflow-wrap: anywhere; }
   </style>
 </head>
 <body>
@@ -34,11 +49,16 @@
   </div>
 
   <section id="result" hidden>
-    <div class="result-head">
-      <label>LinkedIn post</label>
-      <button id="copy">Copy</button>
+    <div class="panels">
+      <div class="panel" id="brief"></div>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>LinkedIn post</h2>
+          <button id="copy">Copy</button>
+        </div>
+        <div id="output"></div>
+      </div>
     </div>
-    <div id="output"></div>
   </section>
 
   <script>
@@ -48,12 +68,72 @@
       $("status").classList.toggle("error", isError);
     };
 
+    // Build DOM with textContent only: brief fields are model output.
+    function el(tag, props = {}, ...children) {
+      const node = document.createElement(tag);
+      Object.assign(node, props);
+      for (const c of children) if (c != null) node.append(c);
+      return node;
+    }
+
+    function chips(ids, blocks) {
+      if (!ids.length) return el("span", { className: "chip none", textContent: "unsupported" });
+      const frag = document.createDocumentFragment();
+      for (const id of ids) frag.append(el("span", { className: "chip", textContent: id, title: blocks[id] ?? "" }));
+      return frag;
+    }
+
+    function list(title, items, render) {
+      if (!items.length) return null;
+      return el("div", {}, el("h3", { textContent: title }),
+        el("ul", { className: "items" }, ...items.map((it) => el("li", {}, ...render(it)))));
+    }
+
+    function renderBrief(brief, source) {
+      const blocks = Object.fromEntries(source.blocks.map((b) => [b.id, b.text]));
+      const d = brief.security;
+      const src = brief.source;
+      const security = d ? el("div", {},
+        el("h3", { textContent: "Security" }),
+        el("dl", {},
+          ...[
+            ["Severity", [d.severity, d.cvss_score != null ? `CVSS ${d.cvss_score}` : null].filter(Boolean).join(" · ")],
+            ["CVEs", d.cve_ids.join(", ")],
+            ["Affected", d.affected_products.map((p) => `${p.name} (${p.versions})`).join("; ")],
+            ["IOCs", d.iocs.map((i) => `${i.kind}: ${i.value}`).join("; ")],
+          ].filter(([, v]) => v).flatMap(([k, v]) => [el("dt", { textContent: k }), el("dd", { textContent: v })]),
+        )) : null;
+
+      $("brief").replaceChildren(
+        el("h2", { textContent: "Content brief" }),
+        el("div", { className: "meta", textContent: `${brief.title} · ${source.blocks.length} source blocks` }),
+        el("h3", { textContent: "Source" }),
+        el("dl", {},
+          ...[
+            ["Kind", src.kind.replaceAll("_", " ")],
+            ["Origin", src.origin],
+            ["Published", src.published],
+            ["Tone", src.tone],
+          ].filter(([, v]) => v).flatMap(([k, v]) => [el("dt", { textContent: k }), el("dd", { textContent: v })]),
+        ),
+        el("h3", { textContent: "TL;DR" }),
+        el("div", { textContent: brief.tldr }),
+        list("Claims", brief.claims, (c) => [c.text, chips(c.support, blocks)]),
+        list("Stats", brief.stats, (s) => [el("strong", { textContent: s.value }), ` ${s.label}`, chips(s.support, blocks)]),
+        list("Timeline", brief.timeline, (t) => [el("strong", { textContent: t.when }), ` ${t.event}`, chips(t.support, blocks)]),
+        list("Actions", brief.actions, (a) => [a.text, chips(a.support, blocks)]),
+        list("Entities", brief.entities, (e) => [el("strong", { textContent: e.name }), " ",
+          el("span", { className: "kind", textContent: e.kind }), ` — ${e.role}`]),
+        security,
+      );
+    }
+
     $("go").addEventListener("click", async () => {
       const text = $("source").value.trim();
       if (!text) return setStatus("Paste some text first.", true);
 
       $("go").disabled = true;
-      setStatus("Generating…");
+      setStatus("Analysing source, then writing post…");
       try {
         const res = await fetch("/api/generate", {
           method: "POST",
@@ -65,9 +145,10 @@
           const detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
           throw new Error(detail || `HTTP ${res.status}`);
         }
+        renderBrief(body.brief, body.source);
         $("output").textContent = body.post;
         $("result").hidden = false;
-        setStatus(`${body.post.length} characters`);
+        setStatus(`${body.brief.claims.length} claims · post ${body.post.length} characters`);
       } catch (err) {
         setStatus(err.message, true);
       } finally {

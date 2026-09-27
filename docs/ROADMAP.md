@@ -5,7 +5,7 @@ browser. No slice is "build the persistence layer".
 
 Mark the current slice here so a fresh session knows where it is.
 
-**Current slice: S0**
+**Current slice: S1b** (S1a done)
 
 ---
 
@@ -24,6 +24,9 @@ Text in -> brief -> LinkedIn post. Render the brief in the UI as its own panel.
 
 **Done when:** the brief is visible and the LinkedIn post is generated only
 from the brief, never from the raw text.
+
+- **S1a — spine, static page.** Done.
+- **S1b — React + Vite + Tailwind + shadcn/ui.** Port the page, same API.
 
 ## S2 — Registry and fan-out
 Add X thread and Executive Summary as registered adapters. Multi-select in the

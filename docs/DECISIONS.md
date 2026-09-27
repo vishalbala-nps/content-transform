@@ -74,3 +74,64 @@ change to the stack.
 `uv run --env-file .env` loads `.env` natively, so `app/core/config.py` reads
 `os.environ` directly instead of pulling in `python-dotenv` or
 `pydantic-settings`. Revisit if config grows beyond a handful of keys.
+
+**2026-09-27 — S1 split into S1a (spine) and S1b (React).**
+S1a delivers the roadmap's "done when" on the existing static page: text in,
+visible brief, LinkedIn post generated from the brief only. S1b is the React +
+Vite + Tailwind + shadcn/ui migration on its own. Doing both at once doubled
+the slice. Supersedes the timing (not the stack) in the S0 frontend entry above.
+
+**2026-09-27 — ContentBrief contract settled.**
+Filled in the parts ARCHITECTURE left open, and changed three things:
+- `angles` is a fixed `Angles` model (`exec`, `technical`, `public`), not
+  `dict[str, str]`. Adapters can rely on the keys, and open-ended dicts are a
+  weak spot in schema-constrained generation.
+- `domain` is one flat `DomainFields` with `kind` plus nullable/empty security
+  fields, not a union per domain. Simpler for the model to fill.
+- Added `title`; `Stat` and `TimelineItem` carry `support` like `Claim`, since
+  numbers and dates are what grounding most needs to check.
+The model fills everything except ids; code assigns `brief_id`, `doc_id` and
+claim ids, and drops support ids that are not real blocks (an empty `support`
+is the "unsupported" signal S7 will use). No `description=` on model-typed
+fields and no defaults, because Gemini rejects keys beside a `$ref`.
+
+**2026-09-27 — Format payloads are structured; code joins them.**
+The LinkedIn schema was one `post: str`. Gemini intermittently dropped the
+newlines inside it, so posts came back as one run-on paragraph. It is now
+`hook` / `paragraphs` / `hashtags`, joined in `render()`. Same rule every S2
+adapter follows: the model fills structure, code does layout.
+
+**2026-09-27 — `angles` removed from ContentBrief; `source: SourceProfile` added.**
+Reverses the `Angles` part of the entry above. Angles were per-audience
+framings written at analysis time, which put an audience decision into a layer
+that runs before any audience is chosen, and the field was easy to misread as
+describing the source. Emphasis for a reader is now the format prompt's job,
+driven by `GenerationConfig.audience`; a custom audience ("Other…" with free
+text) will live there too, not in the brief.
+What the brief was actually missing is provenance. `SourceProfile` records
+`kind` (news article, government memo, advisory…), `origin`, `published` and
+`tone`. The first three let outputs attribute claims: an informal news
+article turned into an exec summary for officials must say "according to
+<outlet>", not state it with the weight of a directive. `tone` describes
+the source only; the analysis prompt writes all claims neutrally, which is what
+makes informal-in, formal-out work.
+
+**2026-09-27 — Default model is `gemini-3.5-flash-lite`.**
+`gemini-2.5-flash` hit its free-tier cap after about 20 requests in one day of
+S1 development. Flash-Lite allows about 500 requests a day, which dev work and
+S2 fan-out need. Checked on both S1 samples: it accepts the ContentBrief schema,
+cites valid blocks and fills the source profile correctly. It extracts fewer
+claims than 2.5 Flash, and one post attributed a finding to the wrong body.
+Revisit once evals exist: the brief is the hardest call, runs once per job,
+and may deserve a stronger model than the per-format calls.
+
+**2026-09-27 — Security is an optional extension block, not a flat domain.**
+Reverses the flat `DomainFields` above. Every brief carried six security
+fields, empty for most sources, which made security look like the core of the
+brief. Now `ContentBrief.security: SecurityDetails | None` is null unless the
+source is about security, and a future domain is another optional block.
+Security stays the hero domain (the advisory format and the IOC policy depend
+on structured CVEs, products, severity and IOCs); it is just no longer in the
+way for other sources. `mitigations` moved out of security into a general
+`actions` list with block support: government memos have directives and
+reports have recommendations, and exec summaries need them regardless of domain.
