@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { LoaderCircle } from "lucide-react"
+import { FileUp, LoaderCircle, X } from "lucide-react"
 
 import { BriefPanel } from "@/components/brief-panel"
 import { JobHistory } from "@/components/job-history"
@@ -11,9 +11,11 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
   createJob,
+  createJobFromFile,
   isFinished,
   listFormats,
   listJobs,
+  listSourceTypes,
   watchJob,
 } from "@/lib/api"
 import type { FormatInfo, Job, JobSummary } from "@/lib/types"
@@ -41,6 +43,10 @@ function statusText(job: Job): string {
 
 export function App() {
   const [text, setText] = useState("")
+  // A chosen file replaces the pasted text as the source.
+  const [file, setFile] = useState<File | null>(null)
+  const [sourceTypes, setSourceTypes] = useState<string[]>([])
+  const fileInput = useRef<HTMLInputElement>(null)
   const [formats, setFormats] = useState<FormatInfo[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [submitting, setSubmitting] = useState(false)
@@ -70,6 +76,10 @@ export function App() {
         )
       })
       .catch((err) => setError(`Could not load formats: ${err.message}`))
+    // Without the list, uploading is hidden and pasting still works.
+    listSourceTypes()
+      .then(setSourceTypes)
+      .catch(() => {})
     refreshHistory()
   }, [refreshHistory])
 
@@ -91,6 +101,7 @@ export function App() {
         setJob(j)
         if (fillForm.current) {
           fillForm.current = false
+          setFile(null)
           setText(j.source.markdown)
           setSelected(new Set(j.formats))
         }
@@ -127,8 +138,8 @@ export function App() {
   }
 
   async function run() {
-    if (!text.trim()) {
-      setError("Paste some text first.")
+    if (!file && !text.trim()) {
+      setError("Paste some text or choose a file first.")
       return
     }
     if (selected.size === 0) {
@@ -140,7 +151,9 @@ export function App() {
     try {
       // Keep the server's order, which is the order the formats are listed in.
       const names = formats.map((f) => f.name).filter((n) => selected.has(n))
-      const created = await createJob(text, names)
+      const created = file
+        ? await createJobFromFile(file, names)
+        : await createJob(text, names)
       setJob(created)
       openJob(created.id, false)
       refreshHistory()
@@ -161,9 +174,57 @@ export function App() {
           id="source"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Paste an article, report or advisory…"
+          placeholder={
+            file
+              ? `Using ${file.name}. Remove the file to paste text instead.`
+              : "Paste an article, report or advisory…"
+          }
+          disabled={file !== null}
           className="min-h-56"
         />
+        {sourceTypes.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <input
+              ref={fileInput}
+              type="file"
+              accept={sourceTypes.join(",")}
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden
+              onChange={(e) => {
+                setFile(e.target.files?.[0] ?? null)
+                setError(null)
+                // Lets the same file be chosen again after removing it.
+                e.target.value = ""
+              }}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fileInput.current?.click()}
+            >
+              <FileUp />
+              {file ? "Choose another file" : "Or upload a file"}
+            </Button>
+            {file ? (
+              <span className="flex items-center gap-1">
+                {file.name}
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Remove file"
+                  onClick={() => setFile(null)}
+                >
+                  <X />
+                </Button>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                {sourceTypes.join(", ")}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <fieldset className="space-y-2">

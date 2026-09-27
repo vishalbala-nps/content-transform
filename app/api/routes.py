@@ -3,7 +3,7 @@ from collections.abc import AsyncIterable
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.sse import EventSourceResponse
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,8 @@ from app.formats.base import GenerationConfig
 from app.formats.registry import ADAPTERS
 from app.formats.runner import FormatResult
 from app.ingest.base import SourceDocument
+from app.ingest.common import IngestError
+from app.ingest.registry import INGESTERS, ingest_file
 from app.ingest.text import ingest_text
 from app.understand.schemas import ContentBrief
 
@@ -21,6 +23,10 @@ router = APIRouter(prefix="/api")
 # How often the event stream checks the job row for changes.
 POLL_S = 0.5
 
+# Longest source accepted, pasted or extracted from a file.
+MAX_SOURCE_CHARS = 100_000
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
 
 class FormatInfo(BaseModel):
     name: str
@@ -28,7 +34,7 @@ class FormatInfo(BaseModel):
 
 
 class JobRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=100_000)
+    text: str = Field(min_length=1, max_length=MAX_SOURCE_CHARS)
     formats: list[str] = Field(min_length=1)
 
 
@@ -126,16 +132,53 @@ async def formats() -> list[FormatInfo]:
     return [FormatInfo(name=a.name, label=a.label) for a in ADAPTERS.values()]
 
 
-@router.post("/jobs", response_model=JobView, status_code=201)
-async def create_job(req: JobRequest) -> JobView:
-    unknown = [f for f in req.formats if f not in ADAPTERS]
+@router.get("/source-types", response_model=list[str])
+async def source_types() -> list[str]:
+    """File extensions an upload may have, e.g. ".docx"."""
+    return list(INGESTERS)
+
+
+def _format_names(requested: list[str]) -> list[str]:
+    if not requested:
+        raise HTTPException(status_code=422, detail="Choose at least one format.")
+    unknown = [f for f in requested if f not in ADAPTERS]
     if unknown:
         raise HTTPException(status_code=422, detail=f"Unknown format: {', '.join(unknown)}")
+    # Registry order, not request order, so the UI always lists outputs the same way.
+    return [n for n in ADAPTERS if n in requested]
+
+
+@router.post("/jobs", response_model=JobView, status_code=201)
+async def create_job(req: JobRequest) -> JobView:
+    names = _format_names(req.formats)
     source = ingest_text(req.text)
     if not source.blocks:
         raise HTTPException(status_code=422, detail="Source text is empty.")
-    # Registry order, not request order, so the UI always lists outputs the same way.
-    names = [n for n in ADAPTERS if n in req.formats]
+    return _view(jobs.create_job(source, names, GenerationConfig()))
+
+
+@router.post("/jobs/upload", response_model=JobView, status_code=201)
+async def create_job_from_file(
+    file: Annotated[UploadFile, File()], formats: Annotated[list[str], Form()]
+) -> JobView:
+    names = _format_names(formats)
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413, detail=f"Files over {MAX_UPLOAD_BYTES // 2**20} MB are not accepted."
+        )
+    try:
+        # Parsing is CPU-bound; off the event loop so progress streams keep flowing.
+        source = await asyncio.to_thread(ingest_file, file.filename or "", data)
+    except IngestError as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
+    if not source.blocks:
+        raise HTTPException(status_code=422, detail="No text found in the file.")
+    if len(source.markdown) > MAX_SOURCE_CHARS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"The file has {len(source.markdown):,} characters of text; the limit is {MAX_SOURCE_CHARS:,}.",
+        )
     return _view(jobs.create_job(source, names, GenerationConfig()))
 
 

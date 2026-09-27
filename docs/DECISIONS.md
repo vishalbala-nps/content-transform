@@ -249,3 +249,31 @@ reading. Details:
   asks for 5-15; judge Ollama quality with evals, not by eye.
 - Eval runs record the provider, and "what moved" compares only runs from
   the same provider and model.
+
+**2026-09-27 — S4 ships without images; PyMuPDF instead of Docling.**
+- Images and scanned PDFs are deferred. Development runs on Ollama, since
+  Gemini free-tier latency and quota are too tight to iterate on, and the
+  Ollama models in use read text only. Every other S4 input is read by a
+  library and works on either provider. The S4 "done when" moves from a
+  screenshot to a CERT-In advisory as a text PDF and as its web page.
+- When images return, a vision model fills `Block`s (code assigns the ids)
+  instead of PaddleOCR: OCR flattens layout, and `paddlepaddle` is painful on
+  Apple Silicon. That needs `complete_json` to accept image parts, and either a
+  vision model on Ollama or images being Gemini-only. Grounding is weaker on
+  such blocks, since their text is itself the model's reading of the image.
+- Documents that already have text are parsed, not sent to the model: parsing
+  gives deterministic block ids with page numbers for S7 grounding, and the
+  same input on every run, which evals need. Cost is not the reason. Gemini 3
+  does not charge for a PDF's embedded text, and page images cost about what
+  the extracted text would.
+- PyMuPDF over Docling for PDFs. Docling brings torch, layout models and its
+  own OCR, which is deferred anyway; PyMuPDF gives text blocks with page
+  numbers. PyMuPDF is AGPL, acceptable unless this ships closed-source.
+- Upload is `POST /api/jobs/upload` (multipart) beside the JSON text route.
+  `GET /api/source-types` serves the ingest registry's extensions, so a new
+  ingester needs no UI edit. Added `python-multipart` (FastAPI needs it for
+  uploads) and `python-docx`. Limits: 20 MB per file, and 100,000 characters
+  of extracted text, the same as pasted text. `.txt` and `.md` uploads use the
+  text ingester.
+- DOCX structure comes from paragraph styles and Word numbering, plus typed
+  bullets. Headings made only with bold or large text are read as paragraphs.

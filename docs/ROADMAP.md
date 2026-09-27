@@ -52,10 +52,19 @@ including closing the tab and restarting the server mid-job.
 `LLM_CACHE_DELAY_S` makes cached jobs slow enough to test this without quota.
 
 ## S4 — Ingestion
-One ingester per sitting: PDF and DOCX (Docling), HTML (trafilatura), images
-(PaddleOCR plus a vision caption). Each plugs into the ingest registry.
+One ingester per sitting, each one module plus a line in
+`app/ingest/registry.py`. No model calls: these inputs already have text.
 
-**Done when:** a screenshot of a CERT-In advisory produces a usable brief.
+- **S4a — upload plumbing + DOCX (python-docx).** Done. Checked with curl,
+  a real Ollama job and by hand in the browser.
+- **S4b — PDF with a text layer (PyMuPDF).** Blocks carry page numbers. A PDF
+  with no text layer is refused with a clear 422.
+- **S4c — HTML (trafilatura).**
+- **Deferred — images and scanned PDFs**, read by a vision model into blocks.
+  Needs Gemini quota or a vision model on Ollama; see DECISIONS.
+
+**Done when:** a CERT-In advisory, as a text PDF and as its web page, produces
+a brief whose claims cite the right blocks, with page numbers for the PDF.
 
 ## S5 — Renderers  ← highest value slice
 Advisory -> branded PDF (WeasyPrint). Presentation -> real .pptx with speaker

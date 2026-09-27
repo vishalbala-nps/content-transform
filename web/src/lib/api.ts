@@ -29,6 +29,19 @@ export function createJob(text: string, formats: string[]): Promise<Job> {
   })
 }
 
+// Uploads a document; the server picks the ingester from its extension.
+export function createJobFromFile(file: File, formats: string[]): Promise<Job> {
+  const body = new FormData()
+  body.append("file", file)
+  for (const f of formats) body.append("formats", f)
+  return request("/api/jobs/upload", { method: "POST", body })
+}
+
+// File extensions an upload may have, e.g. ".docx".
+export function listSourceTypes(): Promise<string[]> {
+  return request("/api/source-types")
+}
+
 export function listJobs(): Promise<JobSummary[]> {
   return request("/api/jobs")
 }
