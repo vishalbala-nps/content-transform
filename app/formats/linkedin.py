@@ -1,15 +1,14 @@
-"""LinkedIn post, generated from the ContentBrief only.
-
-`generate` takes a brief and nothing else, so the raw source cannot leak in.
-S2 turns this into a registered OutputAdapter.
-"""
-
-import json
+"""LinkedIn post, generated from the ContentBrief only."""
 
 from pydantic import BaseModel, Field
 
-from app.core.llm import complete_json
+from app.formats.base import Artifact, GenerationConfig
+from app.formats.brief_view import brief_for_prompt
 from app.understand.schemas import ContentBrief
+
+MAX_CHARS = 1300
+# LinkedIn cuts the post off behind "...see more" after roughly this many characters.
+HOOK_CHARS = 200
 
 
 class LinkedInPost(BaseModel):
@@ -34,7 +33,7 @@ Write one LinkedIn post that:
   to <origin>..."); for a government memo or advisory, name the issuing body
 - uses short paragraphs of one to three sentences
 - ends with one takeaway or question for the reader
-- stays under 1300 characters in total
+- stays under {max_chars} characters in total
 - uses at most 3 hashtags and no emoji
 
 Brief:
@@ -42,37 +41,27 @@ Brief:
 """
 
 
-def _brief_for_prompt(brief: ContentBrief) -> str:
-    # Block ids mean nothing to this prompt, and IOCs do not belong in a
-    # public post, so neither is sent. IOCs also surface inside claim and
-    # action text, so items that mention one are dropped too.
-    security = brief.security
-    ioc_values = [i.value for i in security.iocs] if security else []
+class LinkedInAdapter:
+    name = "linkedin"
+    label = "LinkedIn post"
+    public = True
+    schema = LinkedInPost
 
-    def clean(texts: list[str]) -> list[str]:
-        return [t for t in texts if not any(v in t for v in ioc_values)]
-    return json.dumps(
-        {
-            "title": brief.title,
-            "source": brief.source.model_dump(exclude={"tone"}),
-            "tldr": brief.tldr,
-            "claims": clean([c.text for c in brief.claims]),
-            "stats": [{"value": s.value, "label": s.label} for s in brief.stats],
-            "entities": [e.model_dump() for e in brief.entities],
-            "timeline": [{"when": t.when, "event": t.event} for t in brief.timeline],
-            "actions": clean([a.text for a in brief.actions]),
-            "security": security.model_dump(exclude={"iocs"}) if security else None,
-        },
-        indent=2,
-        ensure_ascii=False,
-    )
+    def prompt(self, brief: ContentBrief, config: GenerationConfig) -> str:
+        return PROMPT.format(max_chars=MAX_CHARS, brief=brief_for_prompt(brief, public=self.public))
+
+    def render(self, payload: LinkedInPost, config: GenerationConfig) -> list[Artifact]:
+        tags = " ".join("#" + t.lstrip("#").replace(" ", "") for t in payload.hashtags)
+        text = "\n\n".join([payload.hook, *payload.paragraphs, *([tags] if tags else [])])
+        return [Artifact(filename="linkedin.md", media_type="text/markdown", text=text)]
+
+    def check(self, payload: LinkedInPost, artifacts: list[Artifact]) -> list[str]:
+        warnings = []
+        if (n := len(artifacts[0].text)) > MAX_CHARS:
+            warnings.append(f"post is {n}/{MAX_CHARS} characters")
+        if (n := len(payload.hook)) > HOOK_CHARS:
+            warnings.append(f"hook is {n} characters; LinkedIn truncates after about {HOOK_CHARS}")
+        return warnings
 
 
-def render(payload: LinkedInPost) -> str:
-    tags = " ".join("#" + t.lstrip("#").replace(" ", "") for t in payload.hashtags)
-    return "\n\n".join([payload.hook, *payload.paragraphs, *([tags] if tags else [])])
-
-
-async def generate(brief: ContentBrief) -> str:
-    payload = await complete_json(LinkedInPost, PROMPT.format(brief=_brief_for_prompt(brief)))
-    return render(payload)
+adapter = LinkedInAdapter()

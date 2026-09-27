@@ -1,5 +1,7 @@
-// Mirrors app/ingest/base.py (SourceDocument) and app/understand/schemas.py
-// (ContentBrief). Those are the frozen contracts; keep this file in step.
+// Mirrors app/ingest/base.py (SourceDocument), app/understand/schemas.py
+// (ContentBrief), app/formats/base.py (Artifact) and the API models in
+// app/api/routes.py and app/formats/runner.py. The first three are frozen
+// contracts; keep this file in step.
 
 export type Support = string[]
 
@@ -101,8 +103,30 @@ export interface ContentBrief {
   security: SecurityDetails | null
 }
 
+export interface Artifact {
+  filename: string
+  media_type: string
+  text: string
+  parts: string[]
+  part_limit: number | null
+}
+
+export interface FormatInfo {
+  name: string
+  label: string
+}
+
+export interface FormatResult {
+  name: string
+  label: string
+  artifacts: Artifact[]
+  warnings: string[]
+  payload: Record<string, unknown> | null
+  error: string | null
+}
+
 export interface GenerateResponse {
   source: SourceDocument
   brief: ContentBrief
-  post: string
+  outputs: FormatResult[]
 }

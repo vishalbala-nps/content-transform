@@ -149,3 +149,49 @@ Prettier, theme provider that follows the system dark mode). Decisions:
   if they start drifting.
 - One process in demo: FastAPI serves `web/dist` when it exists. In dev, Vite
   proxies `/api` to FastAPI. No Node server in production.
+
+**2026-09-27 — Ollama fallback deferred past S2.**
+S2 adds bounded concurrency, the dev cache and fan-out to `app/core/llm.py`
+for Gemini only. The Ollama fallback CLAUDE.md requires is a separate piece of
+work and does not block the S2 "done when". It must land before any demo;
+until then the app has no offline path.
+
+**2026-09-27 — Eval fixtures are synthetic, and evals score as well as record.**
+Five invented source documents in `evals/fixtures/`, one per source kind the
+brief distinguishes, with documentation-range IPs and `.example` domains so
+IOC checks can run without real threat data. `expectations.json` gives each
+fixture its expected classification, verbatim facts the brief must capture,
+and IOCs that must never reach a public format. Scoring on top of the
+roadmap's "write outputs to a timestamped folder" is what lets a run report
+what moved instead of leaving it to reading outputs by eye.
+
+**2026-09-27 — OutputAdapter contract settled.**
+Written as `app/formats/base.py`, with four changes from the first sketch in
+ARCHITECTURE:
+- `schema` is a Pydantic class, not a JSON-schema dict: `complete_json`
+  already takes one, and renderers get a validated, typed payload.
+- `public: bool` added so the IOC policy (and later the PII scan) keys off a
+  property of the format rather than a list of format names.
+- `check(payload, artifacts) -> list[str]` added for soft warnings such as
+  character limits. Each format owns its limits, so evals score a new format
+  without being edited.
+- `Artifact` is defined, text-only for now (`text`, plus `parts` and
+  `part_limit` for threads). S5 will make `text` optional and add a storage
+  path for binary artefacts; that change is expected, not a surprise.
+`GenerationConfig` lives beside the adapter contract with defaults on every
+field; prompts start reading it when the S8 controls exist.
+
+**2026-09-27 — S2 fan-out: retry policy, API shape, format isolation.**
+- Measured on the free tier: after about ten calls in ten seconds, requests
+  are held until the 20 s deadline (504 DEADLINE_EXCEEDED) and then refused
+  with 429. Lone requests sometimes get 504s too. Both clear after tens of
+  seconds, so `llm.py` retries 429 and 504 itself with 5/10/20/40 s backoff
+  plus jitter, outside the concurrency slot. The SDK keeps its short retries
+  for other transient errors. Dropped connections (`httpx.ReadError`) are not
+  retried by the SDK and are retried here too. A per-day quota is not retried.
+- The API returns `outputs: list[FormatResult]` (artifacts, warnings, the
+  filled payload, error) in registry order, and `GET /api/formats` feeds the
+  UI's checkboxes. One format failing, for any reason, is reported on that
+  format; the others still return.
+- Executive summary is not public, so it gets the full brief including IOCs;
+  its prompt says whether indicators exist without listing them.

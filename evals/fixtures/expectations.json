@@ -1,0 +1,37 @@
+{
+  "security_advisory": {
+    "source_kind": "security_advisory",
+    "security": true,
+    "must_capture": ["CVE-2026-41877", "CVE-2026-41878", "9.8", "4.2.7", "3.9.15", "37"],
+    "iocs": [
+      "203.0.113.47",
+      "198.51.100.212",
+      "update-kestrel-cdn.example",
+      "8d1b7aad35df6f4a45e80690b580ef38bba57073f01b7498b847e03e57ea9001"
+    ]
+  },
+  "incident_news": {
+    "source_kind": "news_article",
+    "security": true,
+    "must_capture": ["Northgate Tech Review", "14", "1.2 TB", "410,000", "$4 million"],
+    "iocs": ["cinderlock-leaks.example", "sunridge-payroll.example"]
+  },
+  "government_memo": {
+    "source_kind": "government_memo",
+    "security": false,
+    "must_capture": ["212", "20,000", "2,000", "31 March 2027", "15 October 2026", "48 crore"],
+    "iocs": []
+  },
+  "research_report": {
+    "source_kind": "research_report",
+    "security": false,
+    "must_capture": ["1,850", "23%", "14%", "4.6", "61%", "94 days"],
+    "iocs": []
+  },
+  "press_release": {
+    "source_kind": "press_release",
+    "security": false,
+    "must_capture": ["120", "40%", "$18 million", "1 November 2026", "1,200"],
+    "iocs": []
+  }
+}

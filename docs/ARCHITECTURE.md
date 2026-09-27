@@ -87,16 +87,36 @@ field. Full definitions: `app/understand/schemas.py`.
 ## Contract 3 — OutputAdapter
 
 ```python
+class Artifact(BaseModel):
+    filename: str                  # "linkedin.md"
+    media_type: str                # "text/markdown"
+    text: str                      # the full text: what Copy and Download use
+    parts: list[str] = []          # separately postable pieces, e.g. each tweet
+    part_limit: int | None = None  # character limit per part
+
 class OutputAdapter(Protocol):
-    name: str
-    label: str
-    schema: dict                                      # JSON schema
+    name: str                      # registry key and API id
+    label: str                     # UI label
+    public: bool                   # public-facing: the IOC policy applies
+    schema: type[BaseModel]        # what the model fills
     def prompt(self, brief: ContentBrief, config: GenerationConfig) -> str: ...
-    def render(self, payload: dict, config: GenerationConfig) -> list[Artifact]: ...
+    def render(self, payload: BaseModel, config: GenerationConfig) -> list[Artifact]: ...
+    def check(self, payload: BaseModel, artifacts: list[Artifact]) -> list[str]: ...
 ```
 
-Adapters self-register. Adding a format touches exactly one new file plus the
-registry import.
+- `schema` is a Pydantic model class. `complete_json` derives the JSON schema
+  from it and validates the response, so `render` receives a typed payload,
+  never a raw dict.
+- `public` marks formats read outside the organisation (LinkedIn, X). The IOC
+  policy and, later, the PII scan apply to those without naming formats.
+- `check` returns soft warnings (over a character limit, too many hashtags).
+  It never fails a job. Evals score with it, so a new format brings its own
+  limits and the eval harness needs no edit.
+- `Artifact` is text-only until S5. Binary artefacts (PDF, PPTX, PNG) will
+  make `text` optional and add a storage path.
+
+Adding a format touches exactly one new file plus one line in
+`app/formats/registry.py`. Full definitions: `app/formats/base.py`.
 
 ## GenerationConfig
 
@@ -113,6 +133,10 @@ class GenerationConfig(BaseModel):
     brand_kit: BrandKit | None    # logo, palette, fonts, banned phrases
 ```
 
+Every field has a default. Until the S8 controls exist the API sends the
+defaults and format prompts do not read the config yet; `brand_kit` is added
+in S8.
+
 Translation runs **after** schema filling so character limits and layout
 constraints still hold.
 
@@ -123,8 +147,8 @@ app/
   core/          config.py, llm.py, jobs.py, storage.py
   ingest/        base.py, pdf.py, docx.py, html.py, image.py, registry.py
   understand/    brief.py, schemas.py, prompts/
-  formats/       base.py, registry.py,
-                 linkedin.py, twitter.py, advisory.py,
+  formats/       base.py, registry.py, runner.py, brief_view.py,
+                 linkedin.py, x_thread.py, advisory.py,
                  infographic.py, exec_summary.py, deck.py
   render/        pdf.py, pptx.py, svg.py, templates/
   verify/        grounding.py, pii.py

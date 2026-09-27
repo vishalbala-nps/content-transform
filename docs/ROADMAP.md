@@ -5,7 +5,7 @@ browser. No slice is "build the persistence layer".
 
 Mark the current slice here so a fresh session knows where it is.
 
-**Current slice: S2**
+**Current slice: S3**
 
 ---
 
@@ -36,6 +36,10 @@ UI. Parallel generation with bounded concurrency and 429 backoff.
 **Done when:** adding format #3 required zero edits to format #1.
 
 Also land the eval harness this slice — see below.
+
+Done. Executive Summary was added as format #3 with a new module plus its
+import and entry in `registry.py`; no other file in `app/`, `web/src/` or
+`evals/` changed. Ollama fallback deferred (see DECISIONS).
 
 ## S3 — Jobs, persistence, progress
 Move generation behind the `jobs` table. SSE progress. Job history. Results
