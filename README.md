@@ -56,6 +56,25 @@ each cache hit wait 8 s instead. The eval fixtures in `evals/fixtures/` are
 already cached once the evals have run, so pasting one gives a slow job that
 uses no quota.
 
+## Model provider
+
+Every model call goes to Gemini unless `LLM_PROVIDER=ollama`. Set it in `.env`
+to change the default, or put it before the command for one run (a variable
+set in the shell wins over `.env`):
+
+```sh
+LLM_PROVIDER=ollama uv run --env-file .env uvicorn app.main:app --reload --timeout-graceful-shutdown 3
+```
+
+The server logs which provider and model it is using when it starts. Changing
+provider needs a restart; `--reload` does not watch `.env`.
+
+Ollama needs `ollama serve` running and the model pulled (`ollama pull
+qwen3`, the default `OLLAMA_MODEL`). It works offline and has no rate limits,
+but it is slow: on an M4 with 16 GB a job with three formats takes about four
+minutes, most of it the brief. The dev cache keys on the model, so Gemini and
+Ollama results never mix, and `LLM_CACHE_DELAY_S` works the same for both.
+
 ## Evals
 
 Run after any prompt or schema change:
@@ -66,4 +85,5 @@ uv run --env-file .env python -m evals.run_evals --formats x_thread -v
 ```
 
 Each run writes the briefs, outputs and scores to `evals/runs/<timestamp>/`
-and prints what moved since the last comparable run. See `evals/README.md`.
+and prints what moved since the last comparable run: same provider, model,
+fixtures and formats. See `evals/README.md`.

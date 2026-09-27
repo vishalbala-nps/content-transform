@@ -5,7 +5,7 @@ browser. No slice is "build the persistence layer".
 
 Mark the current slice here so a fresh session knows where it is.
 
-**Current slice: S3**
+**Current slice: S4**
 
 ---
 
@@ -47,8 +47,9 @@ survive a page refresh and a server restart.
 
 **Done when:** you can close the tab mid-job and come back to a finished one.
 
-Built; the "done when" was checked with curl and a headless browser, including a
-server restart mid-job. Mark done after trying it in a real browser.
+Done. Checked with curl, a headless browser and by hand in a real browser,
+including closing the tab and restarting the server mid-job.
+`LLM_CACHE_DELAY_S` makes cached jobs slow enough to test this without quota.
 
 ## S4 — Ingestion
 One ingester per sitting: PDF and DOCX (Docling), HTML (trafilatura), images

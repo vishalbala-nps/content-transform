@@ -1,11 +1,12 @@
 """Single entry point for model calls.
 
-Gemini only for now; the Ollama fallback is deferred (see docs/DECISIONS.md).
+The provider is config: `LLM_PROVIDER=gemini` (the default) or `ollama`, a
+local model that needs no network or quota. Callers never know which one ran.
 
 - At most `LLM_CONCURRENCY` calls (default 3) are in flight across the
   process. Formats fan out in parallel and the free tier is limited by
   requests per minute.
-- Throttling is retried here, with a backoff long enough for a per-minute
+- Gemini: throttling is retried here, with a backoff long enough for a per-minute
   quota to recover. Over quota, the free tier first holds requests until they
   hit the deadline (504 DEADLINE_EXCEEDED), then answers 429. A 504 also
   arrives for single requests when the free tier is short of capacity, and
@@ -13,6 +14,11 @@ Gemini only for now; the Ollama fallback is deferred (see docs/DECISIONS.md).
   the long backoff. A per-day quota is not retried. The SDK retries the other
   transient failures (client timeouts, 408, 500, 502, 503) with its own short
   backoff; dropped connections are retried here like throttling.
+- Ollama: nothing is retried, since there is no quota to wait out and a local
+  failure will not fix itself. The timeout is long (`OLLAMA_TIMEOUT_S`): on a
+  laptop a brief takes minutes. The context window is set on every call
+  (`OLLAMA_NUM_CTX`) because Ollama's default of 4096 tokens silently cuts
+  long sources; a call that fills the window fails instead.
 - Dev cache: responses that validate are stored under `.cache/llm/`, keyed on
   (model, prompt, schema). On by default; `LLM_CACHE=0` for demo runs.
   `LLM_CACHE_DELAY_S` makes each cache hit wait like a real call, so job
@@ -87,13 +93,29 @@ def _cache_path(model: str, prompt: str, json_schema: dict) -> Path:
     return CACHE_DIR / f"{hashlib.sha256(key.encode()).hexdigest()}.json"
 
 
-async def _generate(
-    model: str, prompt: str, config: types.GenerateContentConfig, label: str
-) -> tuple[str, str]:
-    """One model call under the concurrency limit, retrying throttling.
+@lru_cache
+def _ollama() -> httpx.AsyncClient:
+    settings = get_settings()
+    return httpx.AsyncClient(base_url=settings.ollama_url, timeout=settings.ollama_timeout_s)
+
+
+async def _generate(model: str, prompt: str, json_schema: dict, label: str) -> tuple[str, str]:
+    """One model call under the concurrency limit, to the configured provider.
 
     Returns the response text and a one-line summary of the request for the log.
     """
+    if get_settings().llm_provider == "ollama":
+        return await _generate_ollama(model, prompt, json_schema)
+    return await _generate_gemini(model, prompt, json_schema, label)
+
+
+async def _generate_gemini(model: str, prompt: str, json_schema: dict, label: str) -> tuple[str, str]:
+    """Retries throttling and dropped connections; see the module docstring."""
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        response_json_schema=json_schema,
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+    )
     for delay in (*THROTTLE_DELAYS_S, None):
         try:
             async with _slots():
@@ -136,10 +158,60 @@ async def _generate(
     raise AssertionError("unreachable")
 
 
+async def _generate_ollama(model: str, prompt: str, json_schema: dict) -> tuple[str, str]:
+    settings = get_settings()
+    num_ctx = settings.ollama_num_ctx
+    async with _slots():
+        started = time.perf_counter()
+        try:
+            response = await _ollama().post(
+                "/api/chat",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "format": json_schema,
+                    "stream": False,
+                    "think": False,  # a thinking model would spend minutes before the JSON
+                    "options": {"num_ctx": num_ctx},
+                },
+            )
+        except httpx.TimeoutException as e:
+            raise LLMError(
+                f"{model} on Ollama did not respond within {settings.ollama_timeout_s:.0f}s.", status=504
+            ) from e
+        except httpx.TransportError as e:
+            raise LLMError(f"Cannot reach Ollama at {settings.ollama_url}. Is it running?") from e
+
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+    if response.status_code != 200:
+        error = body.get("error") or response.text
+        if response.status_code == 404:
+            error += f" (run `ollama pull {model}`)"
+        raise LLMError(f"Ollama: {error}")
+
+    prompt_tokens = body.get("prompt_eval_count") or 0
+    output_tokens = body.get("eval_count") or 0
+    # Ollama drops the start of a prompt that does not fit, without an error.
+    # Tokens reused from its prompt cache are not counted, so this can miss a
+    # cut, but it never flags a call that fitted.
+    if prompt_tokens + output_tokens >= num_ctx:
+        raise LLMError(
+            f"Ollama: the prompt and response need more than OLLAMA_NUM_CTX={num_ctx} tokens, "
+            "so part of the input was cut. Raise OLLAMA_NUM_CTX."
+        )
+    stats = "request {:.1f}s prompt={} output={}".format(
+        time.perf_counter() - started, prompt_tokens, output_tokens
+    )
+    return body.get("message", {}).get("content", ""), stats
+
+
 async def complete_json(schema: type[T], prompt: str, model: str | None = None) -> T:
     """Fill `schema` from `prompt`. Retries once with the validation error appended."""
     settings = get_settings()
-    model = model or settings.gemini_model
+    model = model or settings.llm_model
     json_schema = schema.model_json_schema()
 
     cache = _cache_path(model, prompt, json_schema) if settings.llm_cache else None
@@ -153,16 +225,11 @@ async def complete_json(schema: type[T], prompt: str, model: str | None = None) 
         except ValidationError:
             pass  # validators changed under the same JSON schema; regenerate
 
-    config = types.GenerateContentConfig(
-        response_mime_type="application/json",
-        response_json_schema=json_schema,
-        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-    )
     name = schema.__name__
     started = time.perf_counter()
     attempt_prompt = prompt
     for attempt in range(2):
-        text, stats = await _generate(model, attempt_prompt, config, f"{name} attempt={attempt + 1}")
+        text, stats = await _generate(model, attempt_prompt, json_schema, f"{name} attempt={attempt + 1}")
         try:
             result = schema.model_validate_json(text)
         except ValidationError as e:

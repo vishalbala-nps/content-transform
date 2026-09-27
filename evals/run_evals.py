@@ -170,11 +170,17 @@ async def main() -> None:
     if unknown:
         parser.error(f"unknown format or fixture: {', '.join(unknown)}")
 
-    # Totals are only comparable with a run over the same fixtures and formats.
+    # Totals are only comparable with a run by the same model over the same
+    # fixtures and formats. Runs from before Ollama have no provider: Gemini.
+    settings = get_settings()
     previous = None
     for path in sorted(RUNS.glob("*/summary.json"), reverse=True):
         candidate = json.loads(path.read_text())
-        if (candidate["formats"], list(candidate["fixtures"])) == (formats, fixtures):
+        same_model = (candidate.get("provider", "gemini"), candidate["model"]) == (
+            settings.llm_provider,
+            settings.llm_model,
+        )
+        if same_model and (candidate["formats"], list(candidate["fixtures"])) == (formats, fixtures):
             previous = candidate
             break
 
@@ -183,10 +189,10 @@ async def main() -> None:
     results = await asyncio.gather(*(run_fixture(n, expectations[n], formats, out / n) for n in fixtures))
     scored = dict(zip(fixtures, results))
 
-    settings = get_settings()
     summary = {
         "run": run,
-        "model": settings.gemini_model,
+        "provider": settings.llm_provider,
+        "model": settings.llm_model,
         "cache": "on" if settings.llm_cache else "off",
         "formats": formats,
         "fixtures": scored,

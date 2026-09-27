@@ -223,3 +223,29 @@ field; prompts start reading it when the S8 controls exist.
 - Run uvicorn with `--timeout-graceful-shutdown 3`. Uvicorn otherwise waits
   indefinitely for open streams on shutdown or reload, i.e. until the watched
   job finishes, which can be over a minute under throttling.
+
+**2026-09-27 — Ollama provider landed; switched by `LLM_PROVIDER`.**
+Closes the "Ollama fallback deferred" entry above. `LLM_PROVIDER=gemini|ollama`
+picks where every call in `complete_json` goes; nothing outside `llm.py`
+knows which ran. It is a manual switch, not automatic failover: a job that
+silently moved to a model twenty times slower would look like a hang, and the
+two models' outputs differ enough that you should know which you are
+reading. Details:
+- Ollama is called over its HTTP API with httpx, already installed (and now
+  declared) for the Gemini client. The `ollama` Python package would be a new
+  dependency wrapping the same single POST.
+- Schema-constrained as before: the Pydantic JSON schema goes in `format`.
+  qwen3 fills the full `_BriefDraft` schema, `$ref`s and nullable blocks
+  included, and validates first time.
+- `think: false`, since qwen3's thinking would add minutes before any JSON.
+- `num_ctx` is sent on every call (default 16384). Ollama's default window
+  is 4096 tokens and it drops the start of a longer prompt without an error;
+  the brief for one fixture already uses about 3,750. A call that fills the
+  window fails with a message to raise `OLLAMA_NUM_CTX`.
+- No retries (no quota to wait out) and a 600 s timeout: on an M4 with 16 GB
+  the brief takes about 140 s and a three-format job about four minutes.
+  Ollama runs the formats one after another, so `LLM_CONCURRENCY` stays 3.
+- Default model `qwen3:latest`. It returned about 30 claims where the prompt
+  asks for 5-15; judge Ollama quality with evals, not by eye.
+- Eval runs record the provider, and "what moved" compares only runs from
+  the same provider and model.
