@@ -5,23 +5,44 @@ ContentBrief, a prompt, and a renderer that turns the filled payload into
 artifacts without calling a model.
 """
 
-from typing import Literal, Protocol
+from typing import Annotated, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
 from app.understand.schemas import ContentBrief
 
+Audience = Literal["executive", "technical", "general_public", "media"]
+Tone = Literal["formal", "neutral", "conversational", "urgent"]
+Language = Literal["en", "hi", "ta", "ml", "kn", "te"]
+DetailLevel = Literal["brief", "standard", "detailed"]
+Objective = Literal["inform", "warn", "persuade", "instruct", "announce"]
+HexColour = Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")]
+
+
+class BrandKit(BaseModel):
+    """A copy of a saved brand kit, taken when the job is created, so editing
+    the kit later never changes how this job's files re-render."""
+
+    kit_id: str  # the saved kit it was copied from
+    org_name: str = Field(max_length=80)  # replaces "Content Transform" in PDF headers and deck footers
+    primary: HexColour  # replaces the house accent; code derives the tints
+    ink: HexColour = "#1a1f2b"  # body text
+    font: str | None = Field(default=None, max_length=60)  # Latin text; the house fonts are the fallback
+    logo: str | None = None  # storage key of a PNG or JPEG
+    logo_data: bytes | None = Field(default=None, exclude=True)  # loaded by the runner before render(); never saved
+    banned_phrases: list[Annotated[str, Field(max_length=100)]] = Field(default=[], max_length=50)
+
 
 class GenerationConfig(BaseModel):
     """One object threaded to every adapter. Never spread as loose prompt strings."""
 
-    audience: Literal["executive", "technical", "general_public", "media"] = "general_public"
-    tone: Literal["formal", "neutral", "conversational", "urgent"] = "neutral"
-    language: str = "en"
-    detail_level: Literal["brief", "standard", "detailed"] = "standard"
-    objective: Literal["inform", "warn", "persuade", "instruct", "announce"] = "inform"
-    style: str | None = None
-    # brand_kit: BrandKit | None arrives with S8.
+    audience: Audience = "general_public"
+    tone: Tone = "neutral"
+    language: Language = "en"
+    detail_level: DetailLevel = "standard"
+    objective: Objective = "inform"
+    style: str | None = Field(default=None, max_length=300)
+    brand_kit: BrandKit | None = None
 
 
 class Artifact(BaseModel):
@@ -54,6 +75,7 @@ class OutputAdapter(Protocol):
         the brief without IOCs, as its prompt does (see brief_view.py)."""
         ...
 
-    def check(self, payload: BaseModel, artifacts: list[Artifact]) -> list[str]:
-        """Soft warnings, e.g. "tweet 4 is 297/280 characters". Empty when clean."""
+    def check(self, payload: BaseModel, artifacts: list[Artifact], config: GenerationConfig) -> list[str]:
+        """Soft warnings, e.g. "tweet 4 is 297/280 characters", including
+        targets the config's detail level sets. Empty when clean."""
         ...

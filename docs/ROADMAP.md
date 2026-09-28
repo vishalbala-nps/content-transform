@@ -156,6 +156,23 @@ least 37" -> "37") and rounded figures in some formats but not others.
 Full `GenerationConfig` surface in the UI. Brand kit consumed by renderers.
 Indian language output via post-schema translation. Cost and token meter.
 
+Brand kits are saved on the server. Languages: English, Hindi, Tamil,
+Malayalam, Kannada, Telugu. UI polish is not part of S8; it comes later.
+
+- **S8a — settings end to end.** Done. Audience, objective, tone, detail
+  and style are chosen in the UI, stored on the job and read by every
+  format prompt through one shared section; each format turns the detail
+  level into its own targets and warns when one is missed. Evals take
+  `--config`. Checked through the API with curl, in headless Chrome, and
+  with eval runs at three configs. The executive + warn wording was
+  tightened after the first run (14 flagged passages down to 6). Open:
+  brief exec summaries of sources with many actions still run past 200
+  words.
+- **S8b — cost and token meter.**
+- **S8c — brand kits**, saved on the server, used by the PDF and deck
+  renderers.
+- **S8d — Indian-language output**, translated after the payload is filled.
+
 The pre-cached flagship demo document moved out of S8: it captures every
 format's output, so it is built after S6 (see Demo safety).
 

@@ -643,3 +643,97 @@ cache is still read for everything else, and the rewrite is still stored.
   embellishments in the incident-news summary and deck notes, and a
   research-report advisory's audience line, arguably a false flag since an
   audience is the writer's framing, not a claim.
+
+**2026-09-28 — S8 scope: fixed audiences, saved brand kits, five Indian languages, polish later.**
+- No free-text audience. Reverses the plan in the 2026-09-27 entry that
+  removed `angles` ("a custom audience ... will live there too"): the
+  audience stays one of the fixed values in `GenerationConfig`.
+- Brand kits are saved on the server and chosen per job, not typed into
+  each job.
+- Output languages: English plus Hindi, Tamil, Malayalam, Kannada and
+  Telugu. Nothing else until these work end to end.
+- "Polish" (UI changes and visual refinement) leaves S8 and is done later.
+
+**2026-09-28 — GenerationConfig and `check()` changed (frozen contract, agreed before editing).**
+- `language` is one of `en`, `hi`, `ta`, `ml`, `kn`, `te`, not any string.
+  `style` is capped at 300 characters.
+- `brand_kit: BrandKit | None`. A job holds a copy of the saved kit made
+  when it is created, not a reference, so editing a kit later never changes
+  how an old job's files re-render after a passage is revised. The logo is
+  a storage key; the runner loads its bytes into `logo_data` (excluded from
+  serialisation, like `Artifact.data`) so `render()` still does no I/O.
+  Logo files are named by content hash, so replacing a kit's logo leaves
+  older jobs' logos in place. PNG or JPEG only: python-pptx cannot place SVG.
+  The kit gives two colours; code derives the tints from them.
+- `check(payload, artifacts, config)`: `detail_level` sets per-format
+  targets (how many tweets, slides, words), and a check has to know the
+  level to warn that one was missed. Evals score those warnings.
+- Numbers stay in Western digits (0-9) in every output language. Devanagari,
+  Tamil and the other native digit sets are rarely used, government
+  documents included, and many readers do not know them. This also keeps
+  the grounding number check meaningful for translated text.
+
+**2026-09-28 — S8a: one settings section per prompt; formats own their detail targets.**
+- One config applies to every format in a job. A format's prompt now says
+  what the format is and its fixed rules; who reads it and in what voice
+  come from `config_for_prompt()` (`formats/config_view.py`), one section
+  shared by every format. The fixed readers and voices in the old prompts
+  ("for a general audience", "for senior decision-makers", "formal and
+  plain") are gone; "no hype" stays in every format. So at the default
+  config (general public, neutral) the exec summary, deck and advisory are
+  written for the public, not for executives as before.
+- `detail_level` becomes per-format targets: LinkedIn 700/1,300/2,000
+  characters, X 3-4/4-7/7-10 tweets, exec summary 2-3/3-5/5-7 points and
+  150/300/450 words, deck 3-4/4-7/7-10 content slides, advisory 2-3/3-5/5-7
+  detail paragraphs. "Standard" is close to what the formats produced
+  before. Schemas allow the widest range; `check()` warns outside the
+  chosen level's.
+- The API takes a `settings` object (audience, objective, tone, detail,
+  style), a JSON form field on uploads; unknown fields are refused, so
+  `language` and a brand kit are 422 until S8c/S8d add them. `JobView`
+  returns the config and an opened job fills the form with it. A blank
+  style is stored as none.
+- Select menus are the shadcn `select` component (`shadcn add select`),
+  built on `radix-ui`, already installed.
+- Evals take `--config` and compare only runs with the same config; runs
+  from before S8 count as the default config.
+- Eval runs (Gemini `gemini-3.5-flash-lite`, cache on, briefs cached):
+  - Default config `20260928-194419` against baseline `20260928-191922`:
+    28/28 facts, 0 IOC leaks, 0 errors unchanged; warnings 3 (+1: the
+    incident-news LinkedIn post went to 1,511/1,300); invented numbers 2
+    (+2), both in one deck writing "20,000" and "2,000" as "20000" and
+    "2000", the same bullets dropping "minimum"; flagged passages 8 of 387
+    (+3). One run, so not yet separable from run-to-run variation.
+  - Executive, formal, brief, warn `20260928-194643`: 14 of 320 passages
+    flagged, most of them consequences the brief does not state ("requires
+    immediate executive review", "legal liabilities"). 4 of 5 exec
+    summaries over the 150-word brief target (151-202).
+  - Technical, detailed, instruct `20260928-194819`: 5 of 477 flagged,
+    4 warnings (deck bullets over 16 words, one deck at 6 of 7-10 slides).
+
+**2026-09-28 — S8a follow-ups: stated consequences only, brief summaries at 200 words, numbers compared without grouping.**
+- The executive reader now leads with "the consequences and decisions the
+  brief states" (was "what it means for the organisation"), and the warn
+  purpose is "the risks the brief describes" (was "a risk and what it
+  could mean for them"). Both invited consequences the source never gave.
+- The brief-level exec summary target is 200 words, not 150. Its actions
+  list carries every action in the brief, and six actions alone are about
+  80 words. Listing only the three most urgent was rejected: an executive
+  summary should not drop an action someone may need.
+- The number check (grounding and evals) compares numbers without
+  grouping commas (`number_value` in `grounding.py`), so "20000" matches
+  "20,000", and Indian grouping ("2,00,000") matches too, which translated
+  output will need. Decimal points and version dots still count: "98" does
+  not match "9.8".
+- Eval runs, against the S8a runs with the same config:
+  - Default `20260928-200224` (all cached, only the number check moved):
+    invented numbers 2 -> 0, flagged passages 8 -> 6 of 387.
+  - Executive, formal, brief, warn `20260928-200225`: flagged 14 -> 6 of
+    322, warnings 6 -> 4. The remaining flags include two questions to the
+    reader judged partly unsupported (they should be not_factual) and a
+    deck note turning "about 410,000 patients" into "hundreds of thousands",
+    a real catch. Two exec summaries still exceed 200 words: the
+    government memo's (282, seven actions) and the security advisory's
+    (219, six actions).
+  - Technical, detailed, instruct `20260928-200405`: unchanged (5 flagged,
+    4 warnings); nothing in its prompts changed.

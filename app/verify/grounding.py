@@ -33,6 +33,13 @@ from app.understand.schemas import ContentBrief
 # Standalone numbers only: "40%", "9.8", "4,200", but not the digits in "b12" or "CVE202641877".
 NUMBER = re.compile(r"\b\d+(?:[.,]\d+)*\b")
 
+
+def number_value(n: str) -> str:
+    """A number as compared with the brief's: grouping commas dropped, so
+    "20000", "20,000" and Indian-style "2,00,000" match by their digits.
+    Decimal points stay ("9.8"), as do version dots ("4.2.7")."""
+    return n.replace(",", "")
+
 Verdict = Literal["supported", "partial", "unsupported", "not_factual"]
 
 
@@ -221,7 +228,7 @@ async def ground(payload: BaseModel, brief: ContentBrief, paths: set[str] | None
     found = [(path, text) for path, text in passages(payload) if paths is None or path in paths]
     items = _items(brief)
     by_id = {i.id: i for i in items}
-    known = set(NUMBER.findall(brief_for_prompt(brief, public=False)))
+    known = {number_value(n) for n in NUMBER.findall(brief_for_prompt(brief, public=False))}
 
     verdicts: dict[str, BaseModel] = {}  # by path
     error = None
@@ -249,7 +256,7 @@ async def ground(payload: BaseModel, brief: ContentBrief, paths: set[str] | None
         blocks = list(dict.fromkeys(b for i in item_ids for b in by_id[i].blocks or []))
         part = v.unsupported_part.strip() if v else ""
         quote = part if verdict == "partial" and part and part in text else None
-        new_numbers = list(dict.fromkeys(n for n in NUMBER.findall(text) if n not in known))
+        new_numbers = list(dict.fromkeys(n for n in NUMBER.findall(text) if number_value(n) not in known))
 
         reasons = []
         if verdict == "unsupported":

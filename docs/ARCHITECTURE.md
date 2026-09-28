@@ -104,7 +104,8 @@ class OutputAdapter(Protocol):
     def prompt(self, brief: ContentBrief, config: GenerationConfig) -> str: ...
     def render(self, payload: BaseModel, config: GenerationConfig,
                brief: ContentBrief) -> list[Artifact]: ...
-    def check(self, payload: BaseModel, artifacts: list[Artifact]) -> list[str]: ...
+    def check(self, payload: BaseModel, artifacts: list[Artifact],
+              config: GenerationConfig) -> list[str]: ...
 ```
 
 - `schema` is a Pydantic model class. `complete_json` derives the JSON schema
@@ -112,9 +113,10 @@ class OutputAdapter(Protocol):
   never a raw dict.
 - `public` marks formats read outside the organisation (LinkedIn, X). The IOC
   policy and, later, the PII scan apply to those without naming formats.
-- `check` returns soft warnings (over a character limit, too many hashtags).
-  It never fails a job. Evals score with it, so a new format brings its own
-  limits and the eval harness needs no edit.
+- `check` returns soft warnings (over a character limit, too many hashtags,
+  fewer slides than the detail level asks for). It never fails a job. Evals
+  score with it, so a new format brings its own limits and the eval harness
+  needs no edit.
 - `render()` also receives the brief, so exact values (CVE ids, versions,
   CVSS, IOCs, dates, figures) are copied from it into the output rather than
   retyped by the model; the model writes prose. A `public` format receives
@@ -141,16 +143,30 @@ One object, threaded to every adapter. Never spread as loose prompt strings.
 class GenerationConfig(BaseModel):
     audience: Literal["executive", "technical", "general_public", "media"]
     tone: Literal["formal", "neutral", "conversational", "urgent"]
-    language: str = "en"
+    language: Literal["en", "hi", "ta", "ml", "kn", "te"] = "en"
     detail_level: Literal["brief", "standard", "detailed"]
     objective: Literal["inform", "warn", "persuade", "instruct", "announce"]
-    style: str | None
-    brand_kit: BrandKit | None    # logo, palette, fonts, banned phrases
+    style: str | None             # free text, at most 300 characters
+    brand_kit: BrandKit | None    # copy of a saved kit: name, colours, font, logo, banned phrases
 ```
 
-Every field has a default. Until the S8 controls exist the API sends the
-defaults and format prompts do not read the config yet; `brand_kit` is added
-in S8.
+Every field has a default, and the job row stores the config, so a
+regenerated passage uses the same settings as the job. One config applies
+to every format in a job.
+
+- A format's prompt says what the format is and its fixed rules (use only
+  the brief, attribute claims, no hype). `config_for_prompt()`
+  (`formats/config_view.py`) adds one section, the same in every format, for
+  audience, objective, tone and style. It changes emphasis and voice, never
+  the rules.
+- `detail_level` is turned into targets by each format (tweets, slides,
+  words), stated in its prompt and warned on by its `check()`. The schema
+  allows the widest range, since `schema` is one class per format.
+- `language` (S8d): prompts are written in English and the payload is
+  translated afterwards. Numbers stay in Western digits in every language.
+- `brand_kit` (S8c) is copied from a saved kit when the job is created, so
+  editing the kit never changes an old job. Renderers receive a `Theme`,
+  not the kit.
 
 Translation runs **after** schema filling so character limits and layout
 constraints still hold.
@@ -163,7 +179,7 @@ app/
   ingest/        base.py, common.py, registry.py, url.py, text.py, docx.py,
                  pdf.py, html.py, image.py
   understand/    brief.py, schemas.py, prompts/
-  formats/       base.py, registry.py, runner.py, brief_view.py,
+  formats/       base.py, registry.py, runner.py, brief_view.py, config_view.py,
                  linkedin.py, x_thread.py, advisory.py,
                  infographic.py, exec_summary.py, deck.py
   render/        pdf.py, pptx.py, svg.py, templates/

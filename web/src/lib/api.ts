@@ -1,4 +1,10 @@
-import type { FormatInfo, FormatResult, Job, JobSummary } from "@/lib/types"
+import type {
+  FormatInfo,
+  FormatResult,
+  Job,
+  JobSettings,
+  JobSummary,
+} from "@/lib/types"
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
@@ -21,28 +27,41 @@ export function listFormats(): Promise<FormatInfo[]> {
   return request("/api/formats")
 }
 
-export function createJob(text: string, formats: string[]): Promise<Job> {
+export function createJob(
+  text: string,
+  formats: string[],
+  settings: JobSettings
+): Promise<Job> {
   return request("/api/jobs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, formats }),
+    body: JSON.stringify({ text, formats, settings }),
   })
 }
 
 // Uploads a document; the server picks the ingester from its extension.
-export function createJobFromFile(file: File, formats: string[]): Promise<Job> {
+export function createJobFromFile(
+  file: File,
+  formats: string[],
+  settings: JobSettings
+): Promise<Job> {
   const body = new FormData()
   body.append("file", file)
   for (const f of formats) body.append("formats", f)
+  body.append("settings", JSON.stringify(settings))
   return request("/api/jobs/upload", { method: "POST", body })
 }
 
 // The server downloads the page (or PDF, DOCX...) at `url` and ingests it.
-export function createJobFromUrl(url: string, formats: string[]): Promise<Job> {
+export function createJobFromUrl(
+  url: string,
+  formats: string[],
+  settings: JobSettings
+): Promise<Job> {
   return request("/api/jobs/url", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url, formats }),
+    body: JSON.stringify({ url, formats, settings }),
   })
 }
 

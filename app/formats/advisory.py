@@ -17,10 +17,13 @@ from pydantic import BaseModel, Field
 
 from app.formats.base import Artifact, GenerationConfig
 from app.formats.brief_view import brief_for_prompt
+from app.formats.config_view import config_for_prompt
 from app.render.pdf import render_pdf
 from app.understand.schemas import ContentBrief
 
-MIN_DETAILS, MAX_DETAILS = 2, 5
+# Detail paragraphs at each detail level. The schema allows the widest range.
+DETAILS = {"brief": (2, 3), "standard": (3, 5), "detailed": (5, 7)}
+MIN_DETAILS, MAX_DETAILS = DETAILS["brief"][0], DETAILS["detailed"][1]
 SUMMARY_WORDS = 80
 
 
@@ -42,7 +45,7 @@ class Advisory(BaseModel):
     )
 
 
-PROMPT = """You are writing a formal advisory: a notice that tells its readers
+PROMPT = """You are writing an advisory: a notice that tells its readers
 what has happened or been decided, what it means for them and what to do.
 
 Everything you know about the subject is in the brief below. It is the only
@@ -71,7 +74,9 @@ Also:
   article, report or opinion, say who reported or alleged them; treat
   marketing language in a press release as the company's claim, not as fact;
   for a government memo or advisory, name the issuing body
-- be formal and plain, with no hype
+- no hype
+
+{settings}
 
 Brief:
 {brief}
@@ -164,8 +169,9 @@ class AdvisoryAdapter:
         return PROMPT.format(
             tables=", ".join(_tables(brief)),
             summary_words=SUMMARY_WORDS,
-            min_details=MIN_DETAILS,
-            max_details=MAX_DETAILS,
+            min_details=DETAILS[config.detail_level][0],
+            max_details=DETAILS[config.detail_level][1],
+            settings=config_for_prompt(config),
             brief=brief_for_prompt(brief, public=self.public),
         )
 
@@ -188,8 +194,11 @@ class AdvisoryAdapter:
             Artifact(filename="advisory.pdf", media_type="application/pdf", data=pdf),
         ]
 
-    def check(self, payload: Advisory, artifacts: list[Artifact]) -> list[str]:
+    def check(self, payload: Advisory, artifacts: list[Artifact], config: GenerationConfig) -> list[str]:
         warnings = []
+        low, high = DETAILS[config.detail_level]
+        if not low <= (n := len(payload.details)) <= high:
+            warnings.append(f"{n} detail paragraphs; {config.detail_level} is {low}-{high}")
         if (n := len(payload.summary.split())) > SUMMARY_WORDS:
             warnings.append(f"summary is {n}/{SUMMARY_WORDS} words")
         if payload.status == "action_required" and not payload.actions:

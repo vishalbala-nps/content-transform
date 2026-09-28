@@ -1,11 +1,13 @@
 """Run every format over every fixture, score the results, report what moved.
 
     uv run --env-file .env python -m evals.run_evals
-        [--formats linkedin,x_thread] [--fixtures press_release] [--no-cache] [-v]
+        [--formats linkedin,x_thread] [--fixtures press_release]
+        [--config '{"audience": "executive", "detail_level": "brief"}'] [--no-cache] [-v]
 
 Each run writes evals/runs/<timestamp>/: per fixture the brief and every
 format's payload and artifacts, plus summary.json and report.md. Scores are
-compared with the latest run over the same fixtures and formats. The dev
+compared with the latest run over the same fixtures, formats and
+GenerationConfig (defaults unless --config is given). The dev
 cache stays on unless --no-cache is given, so after a format prompt change
 only that format's calls hit the model.
 """
@@ -27,7 +29,7 @@ from app.formats.runner import FormatResult, run_formats
 from app.ingest.text import ingest_text
 from app.understand.brief import build_brief
 from app.understand.schemas import ContentBrief
-from app.verify.grounding import NUMBER
+from app.verify.grounding import NUMBER, number_value
 
 ROOT = Path(__file__).parent
 FIXTURES = ROOT / "fixtures"
@@ -55,13 +57,14 @@ def score_format(result: FormatResult, brief: ContentBrief, exp: dict) -> dict:
         return {"error": result.error}
     text = "\n".join(a.text for a in result.artifacts if a.text is not None)
     # Numbers the model wrote that appear nowhere in the brief it was given.
-    known = set(NUMBER.findall(brief_for_prompt(brief, public=False)))
-    written = set(NUMBER.findall(json.dumps(result.payload, ensure_ascii=False)))
+    # Compared as grouping-free values, as the grounding check does: "20000" is "20,000".
+    known = {number_value(n) for n in NUMBER.findall(brief_for_prompt(brief, public=False))}
+    written = {n for n in NUMBER.findall(json.dumps(result.payload, ensure_ascii=False)) if number_value(n) not in known}
     grounding = result.grounding
     return {
         "warnings": result.warnings,
         "ioc_leaks": [i for i in exp["iocs"] if i in text] if ADAPTERS[result.name].public else [],
-        "invented_numbers": sorted(written - known),
+        "invented_numbers": sorted(written),
         # Passages the grounding check flagged, as "path: reasons".
         "passages": len(grounding.passages) if grounding else 0,
         "flagged": [f"{p.path}: {'; '.join(p.reasons)}" for p in grounding.passages if p.reasons]
@@ -71,7 +74,7 @@ def score_format(result: FormatResult, brief: ContentBrief, exp: dict) -> dict:
     }
 
 
-async def run_fixture(name: str, exp: dict, formats: list[str], out: Path) -> dict:
+async def run_fixture(name: str, exp: dict, formats: list[str], config: GenerationConfig, out: Path) -> dict:
     source = ingest_text((FIXTURES / f"{name}.md").read_text())
     try:
         brief = await build_brief(source)
@@ -81,7 +84,7 @@ async def run_fixture(name: str, exp: dict, formats: list[str], out: Path) -> di
     (out / "brief.json").write_text(brief.model_dump_json(indent=2))
 
     scores = {}
-    for result in await run_formats(formats, brief, GenerationConfig()):
+    for result in await run_formats(formats, brief, config):
         fmt_dir = out / result.name
         fmt_dir.mkdir()
         if result.error:
@@ -123,12 +126,20 @@ def totals(fixtures: dict) -> dict:
     }
 
 
+def _non_default(config: dict) -> dict:
+    """The config fields that differ from GenerationConfig's defaults."""
+    defaults = GenerationConfig().model_dump(mode="json")
+    return {k: v for k, v in config.items() if v != defaults.get(k)}
+
+
 def report(summary: dict, previous: dict | None) -> str:
     prev_totals = previous["totals"] if previous else {}
     lower_better = {
         "unsupported items", "format warnings", "IOC leaks", "invented numbers", "flagged passages", "errors"
     }  # fmt: skip
     lines = [f"# Eval run {summary['run']}", "", f"model {summary['model']}, cache {summary['cache']}", ""]
+    if changed := _non_default(summary["config"]):
+        lines += [f"config: {json.dumps(changed)}", ""]
     if previous:
         lines += [f"Compared with {previous['run']}.", ""]
     lines += ["| Total | Value |", "|---|---|"]
@@ -170,6 +181,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--formats", help="comma-separated format names (default: all)")
     parser.add_argument("--fixtures", help="comma-separated fixture names (default: all)")
+    parser.add_argument("--config", help="GenerationConfig fields as JSON (default: all defaults)")
     parser.add_argument("--no-cache", action="store_true", help="bypass the dev LLM cache")
     parser.add_argument("-v", "--verbose", action="store_true", help="log every model call")
     args = parser.parse_args()
@@ -186,9 +198,17 @@ async def main() -> None:
     unknown = [f for f in formats if f not in ADAPTERS] + [f for f in fixtures if f not in expectations]
     if unknown:
         parser.error(f"unknown format or fixture: {', '.join(unknown)}")
+    try:
+        config = GenerationConfig.model_validate_json(args.config or "{}")
+    except ValueError as e:
+        parser.error(f"invalid --config: {e}")
+    config_json = config.model_dump(mode="json")
 
     # Totals are only comparable with a run by the same model over the same
-    # fixtures and formats. Runs from before Ollama have no provider: Gemini.
+    # fixtures and formats with the same config. Runs from before Ollama have
+    # no provider (Gemini); runs from before S8 have no config (the defaults).
+    # The first default-config run after prompts started reading the config
+    # is compared with a pre-S8 run on purpose: that is what the change moved.
     settings = get_settings()
     previous = None
     for path in sorted(RUNS.glob("*/summary.json"), reverse=True):
@@ -197,13 +217,16 @@ async def main() -> None:
             settings.llm_provider,
             settings.llm_model,
         )
-        if same_model and (candidate["formats"], list(candidate["fixtures"])) == (formats, fixtures):
+        same_config = _non_default(candidate.get("config", {})) == _non_default(config_json)
+        if same_model and same_config and (candidate["formats"], list(candidate["fixtures"])) == (formats, fixtures):
             previous = candidate
             break
 
     run = datetime.now().strftime("%Y%m%d-%H%M%S")
     out = RUNS / run
-    results = await asyncio.gather(*(run_fixture(n, expectations[n], formats, out / n) for n in fixtures))
+    results = await asyncio.gather(
+        *(run_fixture(n, expectations[n], formats, config, out / n) for n in fixtures)
+    )
     scored = dict(zip(fixtures, results))
 
     summary = {
@@ -212,6 +235,7 @@ async def main() -> None:
         "model": settings.llm_model,
         "cache": "on" if settings.llm_cache else "off",
         "formats": formats,
+        "config": config_json,
         "fixtures": scored,
         "totals": totals(scored),
     }

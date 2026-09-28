@@ -10,11 +10,14 @@ from pydantic import BaseModel, Field
 
 from app.formats.base import Artifact, GenerationConfig
 from app.formats.brief_view import brief_for_prompt
+from app.formats.config_view import config_for_prompt
 from app.understand.schemas import ContentBrief
 
 TWEET_LIMIT = 280
 TWEET_BUDGET = 260  # what the model is told: room for " 10/10" and hashtags
-MIN_TWEETS, MAX_TWEETS = 3, 8
+# Tweets per thread at each detail level. The schema allows the widest range.
+TWEETS = {"brief": (3, 4), "standard": (4, 7), "detailed": (7, 10)}
+MIN_TWEETS, MAX_TWEETS = TWEETS["brief"][0], TWEETS["detailed"][1]
 
 
 class XThread(BaseModel):
@@ -26,7 +29,7 @@ class XThread(BaseModel):
     hashtags: list[str] = Field(max_length=2, description="At most 2 hashtags for the last tweet, without the # sign.")
 
 
-PROMPT = """You are writing a thread for X (formerly Twitter) for a general audience.
+PROMPT = """You are writing a thread for X (formerly Twitter).
 
 Everything you know about the subject is in the brief below. It is the only
 source of truth: do not add numbers, names, dates or claims that are not in it.
@@ -44,6 +47,8 @@ Write a thread of {min_tweets} to {max_tweets} tweets that:
   emoji and no links
 - uses at most 2 hashtags, which will be added to the last tweet
 
+{settings}
+
 Brief:
 {brief}
 """
@@ -56,10 +61,12 @@ class XThreadAdapter:
     schema = XThread
 
     def prompt(self, brief: ContentBrief, config: GenerationConfig) -> str:
+        low, high = TWEETS[config.detail_level]
         return PROMPT.format(
-            min_tweets=MIN_TWEETS,
-            max_tweets=MAX_TWEETS,
+            min_tweets=low,
+            max_tweets=high,
             budget=TWEET_BUDGET,
+            settings=config_for_prompt(config),
             brief=brief_for_prompt(brief, public=self.public),
         )
 
@@ -79,12 +86,17 @@ class XThreadAdapter:
             )
         ]
 
-    def check(self, payload: XThread, artifacts: list[Artifact]) -> list[str]:
-        return [
+    def check(self, payload: XThread, artifacts: list[Artifact], config: GenerationConfig) -> list[str]:
+        warnings = []
+        low, high = TWEETS[config.detail_level]
+        if not low <= (n := len(payload.tweets)) <= high:
+            warnings.append(f"thread has {n} tweets; {config.detail_level} is {low}-{high}")
+        warnings += [
             f"tweet {i} is {len(part)}/{TWEET_LIMIT} characters"
             for i, part in enumerate(artifacts[0].parts, start=1)
             if len(part) > TWEET_LIMIT
         ]
+        return warnings
 
 
 adapter = XThreadAdapter()

@@ -32,7 +32,7 @@ async def render_format(
     # Off the event loop: a PDF or deck takes long enough to stall progress streams.
     render_brief = brief_for_render(brief, public=adapter.public)
     artifacts = await asyncio.to_thread(adapter.render, payload, config, render_brief)
-    return artifacts, adapter.check(payload, artifacts)
+    return artifacts, adapter.check(payload, artifacts, config)
 
 
 async def run_format(adapter: OutputAdapter, brief: ContentBrief, config: GenerationConfig) -> FormatResult:

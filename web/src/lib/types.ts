@@ -114,6 +114,42 @@ export interface Artifact {
   path: string | null
 }
 
+// Mirrors GenerationConfig and BrandKit in app/formats/base.py (frozen).
+export type Audience = "executive" | "technical" | "general_public" | "media"
+export type Tone = "formal" | "neutral" | "conversational" | "urgent"
+export type Language = "en" | "hi" | "ta" | "ml" | "kn" | "te"
+export type DetailLevel = "brief" | "standard" | "detailed"
+export type Objective = "inform" | "warn" | "persuade" | "instruct" | "announce"
+
+export interface BrandKit {
+  kit_id: string
+  org_name: string
+  primary: string // "#rrggbb"
+  ink: string
+  font: string | null
+  logo: string | null // storage key
+  banned_phrases: string[]
+}
+
+export interface GenerationConfig {
+  audience: Audience
+  tone: Tone
+  language: Language
+  detail_level: DetailLevel
+  objective: Objective
+  style: string | null
+  brand_kit: BrandKit | null
+}
+
+// What a job request chooses (JobSettings in app/api/routes.py).
+export interface JobSettings {
+  audience: Audience
+  tone: Tone
+  detail_level: DetailLevel
+  objective: Objective
+  style: string | null
+}
+
 export interface FormatInfo {
   name: string
   label: string
@@ -163,6 +199,7 @@ export interface Job {
   created_at: string
   updated_at: string
   formats: string[] // requested, in registry order
+  config: GenerationConfig
   steps: Step[]
   source: SourceDocument
   brief: ContentBrief | null

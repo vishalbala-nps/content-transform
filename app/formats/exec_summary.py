@@ -9,11 +9,14 @@ from pydantic import BaseModel, Field
 
 from app.formats.base import Artifact, GenerationConfig
 from app.formats.brief_view import brief_for_prompt
+from app.formats.config_view import config_for_prompt
 from app.render.pdf import render_pdf
 from app.understand.schemas import ContentBrief
 
-MAX_WORDS = 300
-MIN_POINTS, MAX_POINTS = 3, 5
+# Targets at each detail level. The schema allows the widest range of points.
+MAX_WORDS = {"brief": 200, "standard": 300, "detailed": 450}
+POINTS = {"brief": (2, 3), "standard": (3, 5), "detailed": (5, 7)}
+MIN_POINTS, MAX_POINTS = POINTS["brief"][0], POINTS["detailed"][1]
 
 
 class ExecSummary(BaseModel):
@@ -34,8 +37,8 @@ class ExecSummary(BaseModel):
     )
 
 
-PROMPT = """You are writing an executive summary for senior decision-makers who
-have two minutes and will act on what you write.
+PROMPT = """You are writing an executive summary: a short document its reader
+can take in within two minutes and act on.
 
 Everything you know about the subject is in the brief below. It is the only
 source of truth: do not add numbers, names, dates, claims or recommendations
@@ -51,7 +54,9 @@ Write a summary that:
 - attributes claims that are not official statements of fact: say who
   reported or alleged them; treat marketing language in a press release as
   the company's claim, not as fact
-- is formal and plain, with no hype, and under {max_words} words in total
+- has no hype, and is under {max_words} words in total
+
+{settings}
 
 Brief:
 {brief}
@@ -65,10 +70,12 @@ class ExecSummaryAdapter:
     schema = ExecSummary
 
     def prompt(self, brief: ContentBrief, config: GenerationConfig) -> str:
+        low, high = POINTS[config.detail_level]
         return PROMPT.format(
-            min_points=MIN_POINTS,
-            max_points=MAX_POINTS,
-            max_words=MAX_WORDS,
+            min_points=low,
+            max_points=high,
+            max_words=MAX_WORDS[config.detail_level],
+            settings=config_for_prompt(config),
             brief=brief_for_prompt(brief, public=self.public),
         )
 
@@ -85,9 +92,14 @@ class ExecSummaryAdapter:
             Artifact(filename="exec_summary.pdf", media_type="application/pdf", data=pdf),
         ]
 
-    def check(self, payload: ExecSummary, artifacts: list[Artifact]) -> list[str]:
-        words = len(artifacts[0].text.split())
-        return [f"summary is {words}/{MAX_WORDS} words"] if words > MAX_WORDS else []
+    def check(self, payload: ExecSummary, artifacts: list[Artifact], config: GenerationConfig) -> list[str]:
+        warnings = []
+        if (words := len(artifacts[0].text.split())) > (limit := MAX_WORDS[config.detail_level]):
+            warnings.append(f"summary is {words}/{limit} words")
+        low, high = POINTS[config.detail_level]
+        if not low <= (n := len(payload.key_points)) <= high:
+            warnings.append(f"{n} key points; {config.detail_level} is {low}-{high}")
+        return warnings
 
 
 adapter = ExecSummaryAdapter()

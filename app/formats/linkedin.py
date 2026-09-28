@@ -4,9 +4,11 @@ from pydantic import BaseModel, Field
 
 from app.formats.base import Artifact, GenerationConfig
 from app.formats.brief_view import brief_for_prompt
+from app.formats.config_view import config_for_prompt
 from app.understand.schemas import ContentBrief
 
-MAX_CHARS = 1300
+# Longest post at each detail level. LinkedIn itself allows 3,000.
+MAX_CHARS = {"brief": 700, "standard": 1300, "detailed": 2000}
 # LinkedIn cuts the post off behind "...see more" after roughly this many characters.
 HOOK_CHARS = 200
 
@@ -19,7 +21,7 @@ class LinkedInPost(BaseModel):
     hashtags: list[str] = Field(max_length=3, description="At most 3 hashtags, without the # sign.")
 
 
-PROMPT = """You are writing a LinkedIn post for a professional audience.
+PROMPT = """You are writing a LinkedIn post.
 
 Everything you know about the subject is in the brief below. It is the only
 source of truth: do not add numbers, names, dates or claims that are not in it.
@@ -36,6 +38,8 @@ Write one LinkedIn post that:
 - stays under {max_chars} characters in total
 - uses at most 3 hashtags and no emoji
 
+{settings}
+
 Brief:
 {brief}
 """
@@ -48,17 +52,21 @@ class LinkedInAdapter:
     schema = LinkedInPost
 
     def prompt(self, brief: ContentBrief, config: GenerationConfig) -> str:
-        return PROMPT.format(max_chars=MAX_CHARS, brief=brief_for_prompt(brief, public=self.public))
+        return PROMPT.format(
+            max_chars=MAX_CHARS[config.detail_level],
+            settings=config_for_prompt(config),
+            brief=brief_for_prompt(brief, public=self.public),
+        )
 
     def render(self, payload: LinkedInPost, config: GenerationConfig, brief: ContentBrief) -> list[Artifact]:
         tags = " ".join("#" + t.lstrip("#").replace(" ", "") for t in payload.hashtags)
         text = "\n\n".join([payload.hook, *payload.paragraphs, *([tags] if tags else [])])
         return [Artifact(filename="linkedin.md", media_type="text/markdown", text=text)]
 
-    def check(self, payload: LinkedInPost, artifacts: list[Artifact]) -> list[str]:
+    def check(self, payload: LinkedInPost, artifacts: list[Artifact], config: GenerationConfig) -> list[str]:
         warnings = []
-        if (n := len(artifacts[0].text)) > MAX_CHARS:
-            warnings.append(f"post is {n}/{MAX_CHARS} characters")
+        if (n := len(artifacts[0].text)) > (limit := MAX_CHARS[config.detail_level]):
+            warnings.append(f"post is {n}/{limit} characters")
         if (n := len(payload.hook)) > HOOK_CHARS:
             warnings.append(f"hook is {n} characters; LinkedIn truncates after about {HOOK_CHARS}")
         return warnings

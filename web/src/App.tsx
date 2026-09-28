@@ -3,6 +3,7 @@ import { FileUp, LoaderCircle, X } from "lucide-react"
 
 import { JobHistory } from "@/components/job-history"
 import { JobProgress } from "@/components/job-progress"
+import { JobSettingsFields } from "@/components/job-settings"
 import { OutputPanel } from "@/components/output-panel"
 import { SourcePane } from "@/components/source-pane"
 import { Button } from "@/components/ui/button"
@@ -21,7 +22,14 @@ import {
   watchJob,
 } from "@/lib/api"
 import { resolveSelection, type SelectionKey } from "@/lib/grounding"
-import type { FormatInfo, FormatResult, Job, JobSummary } from "@/lib/types"
+import { DEFAULT_SETTINGS, settingsFromConfig } from "@/lib/settings"
+import type {
+  FormatInfo,
+  FormatResult,
+  Job,
+  JobSettings,
+  JobSummary,
+} from "@/lib/types"
 
 // The open job lives in the URL (?job=<id>), so a refresh, a reopened tab or
 // a shared link shows the same job, finished or still running.
@@ -54,6 +62,7 @@ export function App() {
   const fileInput = useRef<HTMLInputElement>(null)
   const [formats, setFormats] = useState<FormatInfo[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [settings, setSettings] = useState<JobSettings>(DEFAULT_SETTINGS)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [jobId, setJobId] = useState<string | null>(jobIdFromUrl)
@@ -114,6 +123,7 @@ export function App() {
           setUrl("")
           setText(j.source.markdown)
           setSelected(new Set(j.formats))
+          setSettings(settingsFromConfig(j.config))
         }
         if (isFinished(j)) refreshHistory()
       },
@@ -177,10 +187,10 @@ export function App() {
       // Keep the server's order, which is the order the formats are listed in.
       const names = formats.map((f) => f.name).filter((n) => selected.has(n))
       const created = file
-        ? await createJobFromFile(file, names)
+        ? await createJobFromFile(file, names, settings)
         : link
-          ? await createJobFromUrl(link, names)
-          : await createJob(text, names)
+          ? await createJobFromUrl(link, names, settings)
+          : await createJob(text, names, settings)
       setJob(created)
       openJob(created.id, false)
       refreshHistory()
@@ -288,6 +298,8 @@ export function App() {
           ))}
         </div>
       </fieldset>
+
+      <JobSettingsFields value={settings} onChange={setSettings} />
 
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">

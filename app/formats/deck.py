@@ -13,11 +13,14 @@ from pydantic import BaseModel, Field
 
 from app.formats.base import Artifact, GenerationConfig
 from app.formats.brief_view import brief_for_prompt
+from app.formats.config_view import config_for_prompt
 from app.render.pptx import DeckBuilder
 from app.understand.schemas import ContentBrief
 
 PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-MIN_SLIDES, MAX_SLIDES = 4, 7
+# Content slides at each detail level. The schema allows the widest range.
+SLIDES = {"brief": (3, 4), "standard": (4, 7), "detailed": (7, 10)}
+MIN_SLIDES, MAX_SLIDES = SLIDES["brief"][0], SLIDES["detailed"][1]
 MIN_BULLETS, MAX_BULLETS = 2, 4
 MAX_NUMBERS = 4
 # Past these the text crowds the slide; check() warns.
@@ -57,8 +60,8 @@ class Deck(BaseModel):
     slides: list[Slide] = Field(min_length=MIN_SLIDES, max_length=MAX_SLIDES)
 
 
-PROMPT = """You are writing a short slide deck that someone will present to
-colleagues at a briefing. Each slide has a title, a few bullets and speaker
+PROMPT = """You are writing a short slide deck that someone will present at a
+briefing. Each slide has a title, a few bullets and speaker
 notes: the words the presenter says while the slide is up.
 
 Everything you know about the subject is in the brief below. It is the only
@@ -95,7 +98,9 @@ Also:
 - attribute claims that are not official statements of fact: say who
   reported or alleged them; treat marketing language in a press release as
   the company's claim, not as fact
-- keep the whole deck formal and plain, with no hype
+- keep the whole deck free of hype
+
+{settings}
 
 Brief:
 {brief}
@@ -127,12 +132,13 @@ class DeckAdapter:
     def prompt(self, brief: ContentBrief, config: GenerationConfig) -> str:
         return PROMPT.format(
             max_numbers=MAX_NUMBERS,
-            min_slides=MIN_SLIDES,
-            max_slides=MAX_SLIDES,
+            min_slides=SLIDES[config.detail_level][0],
+            max_slides=SLIDES[config.detail_level][1],
             title_words=TITLE_WORDS,
             min_bullets=MIN_BULLETS,
             max_bullets=MAX_BULLETS,
             bullet_words=BULLET_WORDS,
+            settings=config_for_prompt(config),
             brief=brief_for_prompt(brief, public=self.public),
         )
 
@@ -149,8 +155,11 @@ class DeckAdapter:
             Artifact(filename="deck.pptx", media_type=PPTX, data=deck.to_bytes()),
         ]
 
-    def check(self, payload: Deck, artifacts: list[Artifact]) -> list[str]:
+    def check(self, payload: Deck, artifacts: list[Artifact], config: GenerationConfig) -> list[str]:
         warnings = []
+        low, high = SLIDES[config.detail_level]
+        if not low <= (n := len(payload.slides)) <= high:
+            warnings.append(f"{n} content slides; {config.detail_level} is {low}-{high}")
         # Numbered as in the deck: the title slide is 1, then key figures if present.
         first = 3 if payload.key_numbers else 2
         for number, slide in enumerate(payload.slides, start=first):

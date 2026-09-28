@@ -5,12 +5,12 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from fastapi.sse import EventSourceResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.core import jobs, revise, storage
 from app.core.llm import LLMError
 from app.db.models import Job
-from app.formats.base import Artifact, GenerationConfig
+from app.formats.base import Artifact, Audience, DetailLevel, GenerationConfig, Objective, Tone
 from app.formats.registry import ADAPTERS
 from app.formats.runner import FormatResult
 from app.ingest.base import SourceDocument
@@ -34,14 +34,33 @@ class FormatInfo(BaseModel):
     label: str
 
 
+class JobSettings(BaseModel):
+    """What a job request chooses; the job's GenerationConfig is built from it.
+    Language and brand kit are added when translation and saved kits exist."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    audience: Audience = "general_public"
+    tone: Tone = "neutral"
+    detail_level: DetailLevel = "standard"
+    objective: Objective = "inform"
+    style: str | None = Field(default=None, max_length=300)
+
+    def to_config(self) -> GenerationConfig:
+        style = (self.style or "").strip() or None
+        return GenerationConfig(**self.model_dump(exclude={"style"}), style=style)
+
+
 class JobRequest(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_SOURCE_CHARS)
     formats: list[str] = Field(min_length=1)
+    settings: JobSettings = JobSettings()
 
 
 class UrlJobRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2_000)
     formats: list[str] = Field(min_length=1)
+    settings: JobSettings = JobSettings()
 
 
 class Step(BaseModel):
@@ -56,6 +75,7 @@ class JobView(BaseModel):
     created_at: datetime
     updated_at: datetime
     formats: list[str]  # requested, in registry order
+    config: GenerationConfig
     steps: list[Step]
     source: SourceDocument
     brief: ContentBrief | None
@@ -110,6 +130,7 @@ def _view(job: Job) -> JobView:
         created_at=_utc(job.created_at),
         updated_at=_utc(job.updated_at),
         formats=job.formats,
+        config=job.config,
         steps=_steps(job),
         source=job.source,
         brief=job.brief,
@@ -160,14 +181,20 @@ async def create_job(req: JobRequest) -> JobView:
     source = ingest_text(req.text)
     if not source.blocks:
         raise HTTPException(status_code=422, detail="Source text is empty.")
-    return _view(jobs.create_job(source, names, GenerationConfig()))
+    return _view(jobs.create_job(source, names, req.settings.to_config()))
 
 
 @router.post("/jobs/upload", response_model=JobView, status_code=201)
 async def create_job_from_file(
-    file: Annotated[UploadFile, File()], formats: Annotated[list[str], Form()]
+    file: Annotated[UploadFile, File()],
+    formats: Annotated[list[str], Form()],
+    settings: Annotated[str | None, Form(description="JobSettings as JSON")] = None,
 ) -> JobView:
     names = _format_names(formats)
+    try:
+        config = JobSettings.model_validate_json(settings or "{}").to_config()
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=f"Invalid settings: {e}") from e
     data = await file.read(MAX_FILE_BYTES + 1)
     if len(data) > MAX_FILE_BYTES:
         raise HTTPException(
@@ -178,7 +205,7 @@ async def create_job_from_file(
         source = await asyncio.to_thread(ingest_file, file.filename or "", data)
     except IngestError as e:
         raise HTTPException(status_code=e.status, detail=str(e)) from e
-    return _create_ingested_job(source, names, "the file")
+    return _create_ingested_job(source, names, config, "the file")
 
 
 @router.post("/jobs/url", response_model=JobView, status_code=201)
@@ -188,10 +215,12 @@ async def create_job_from_url(req: UrlJobRequest) -> JobView:
         source = await ingest_url(req.url.strip())
     except IngestError as e:
         raise HTTPException(status_code=e.status, detail=str(e)) from e
-    return _create_ingested_job(source, names, "the page")
+    return _create_ingested_job(source, names, req.settings.to_config(), "the page")
 
 
-def _create_ingested_job(source: SourceDocument, names: list[str], what: str) -> JobView:
+def _create_ingested_job(
+    source: SourceDocument, names: list[str], config: GenerationConfig, what: str
+) -> JobView:
     """Checks shared by uploads and URLs, which only find out how much text there is after parsing."""
     if not source.blocks:
         raise HTTPException(status_code=422, detail=f"No text found in {what}.")
@@ -201,7 +230,7 @@ def _create_ingested_job(source: SourceDocument, names: list[str], what: str) ->
             detail=f"{what.capitalize()} has {len(source.markdown):,} characters of text; "
             f"the limit is {MAX_SOURCE_CHARS:,}.",
         )
-    return _view(jobs.create_job(source, names, GenerationConfig()))
+    return _view(jobs.create_job(source, names, config))
 
 
 @router.get("/jobs", response_model=list[JobSummary])
