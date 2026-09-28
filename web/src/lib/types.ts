@@ -129,6 +129,9 @@ export interface Passage {
   quote: string | null // the unsupported words; null means the whole passage
   new_numbers: string[]
   reasons: string[] // why it needs review; empty when it does not
+  // What a reviewer did (app/core/revise.py). Edited text is trusted, not
+  // checked; an accepted flag keeps its reasons.
+  review: "accepted" | "edited" | "regenerated" | null
 }
 
 export interface Grounding {

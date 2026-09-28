@@ -5,7 +5,7 @@ browser. No slice is "build the persistence layer".
 
 Mark the current slice here so a fresh session knows where it is.
 
-**Current slice: S7**, then S6 (reordered 2026-09-27, see DECISIONS)
+**Current slice: S8**, then S6 (reordered 2026-09-27 and 2026-09-28, see DECISIONS)
 
 ---
 
@@ -107,7 +107,11 @@ Done. Decks download from the browser and open in PowerPoint; the executive
 summary and the advisory download as PDFs. Open for evals: invented numbers
 in speaker notes, and press-release claims stated rather than attributed.
 
-## S6 — Infographic  ← after S7
+## S6 — Infographic  ← after S8
+Deferred, not dropped: the problem statement asks for infographic content.
+It must land before any submission or demo, and the flagship demo cache is
+built after it.
+
 Write three or four SVG templates **by hand first** (stat grid, timeline,
 comparison, process flow), then write the schema and prompt to fill them.
 Doing it the other way round produces schemas the templates cannot render.
@@ -130,16 +134,35 @@ Source and output side by side.
   source's "an estimated 4,200", and an invented "data exfiltration").
   Hashtags and closing questions came back not_factual. Older jobs load
   without a report.
-- **S7b — review UI.** Source blocks beside the outputs, brief in a tab or
-  drawer, flagged passages amber, click a passage to see its claims and
-  blocks.
-- **S7c — regenerate one section.** By payload path, from the cache by
-  default, with a control to force a fresh call.
+- **S7b — review UI.** Done. The source's blocks sit beside the outputs,
+  with the brief as a second tab. Each output card opens on Review, a list
+  of its passages: flagged ones are amber with their reasons, and a partly
+  supported one has just the unsupported words marked. A "Flagged only"
+  filter narrows the list. Clicking a passage lists the brief items it
+  rests on and highlights them, and their blocks, in the left pane, which
+  scrolls to them. The Text tab keeps the old view. Checked in headless
+  Chrome on the security advisory fixture, at desktop and phone width, and
+  on a pre-S7 job, which still shows text only.
+- **S7c — act on a passage.** Done. Select a passage to edit it (trusted,
+  not re-checked), regenerate it (always a new model call, re-checked) or
+  accept its flag. The format's files
+  are rebuilt each time, so downloads carry the change. Checked on Gemini
+  through the API and in headless Chrome.
+
+Done. Open for evals: the grounding check misses lost qualifiers ("at
+least 37" -> "37") and rounded figures in some formats but not others.
 
 ## S8 — Parameters, brand kit, i18n, polish
 Full `GenerationConfig` surface in the UI. Brand kit consumed by renderers.
 Indian language output via post-schema translation. Cost and token meter.
-Pre-cached flagship demo document.
+
+The pre-cached flagship demo document moved out of S8: it captures every
+format's output, so it is built after S6 (see Demo safety).
+
+Evals resumed at the start of S8, since format prompts start reading the
+config here. Baseline run `20260928-191922` (Gemini `gemini-3.5-flash-lite`,
+cache on): 28/28 facts, 0 invented numbers, 0 IOC leaks, 2 format
+warnings, 5 of 382 passages flagged.
 
 ---
 
@@ -153,6 +176,7 @@ LinkedIn posts by hand with no idea whether last night's change helped.
 
 ## Demo safety
 
-- Pre-cache one flagship document's complete output set as static files.
+- Pre-cache one flagship document's complete output set as static files,
+  after S6, so the set includes the infographic.
 - Keep the Ollama fallback working; campus wifi fails.
 - Never demo with the dev LLM cache enabled.

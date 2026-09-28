@@ -24,6 +24,7 @@ from enum import Enum
 from typing import Literal, get_args, get_origin
 
 from pydantic import BaseModel, Field, create_model, model_validator
+from pydantic.fields import FieldInfo
 
 from app.core.llm import LLMError, complete_json
 from app.formats.brief_view import brief_for_prompt
@@ -44,6 +45,9 @@ class Passage(BaseModel):
     quote: str | None  # the unsupported words, verbatim; None means the whole passage
     new_numbers: list[str]  # numbers that appear nowhere in the brief
     reasons: list[str]  # why it needs review; empty when it does not
+    # What a reviewer did to it (app/core/revise.py). Edited text is the
+    # reviewer's and is not checked; an accepted flag keeps its reasons.
+    review: Literal["accepted", "edited", "regenerated"] | None = None
 
 
 class Grounding(BaseModel):
@@ -63,6 +67,7 @@ class _Item:
 
 
 def _items(brief: ContentBrief) -> list[_Item]:
+    # The review UI rebuilds these ids to highlight items: keep web/src/lib/grounding.ts in step.
     source = brief.source
     about = ", ".join(x for x in (source.kind.replace("_", " "), source.origin, source.published) if x)
     items = [_Item("src", f"The source is a {about}.", None), _Item("tldr", brief.tldr, None)]
@@ -109,6 +114,41 @@ def passages(payload: BaseModel) -> list[tuple[str, str]]:
 
     walk(payload, "", type(payload))
     return found
+
+
+def _steps(path: str) -> list[tuple[str, int | None]]:
+    """Split a path from passages(), never one from a model: "slides[2].notes" -> [("slides", 2), ("notes", None)]."""
+    steps = []
+    for part in path.split("."):
+        name, _, index = part.partition("[")
+        steps.append((name, int(index.rstrip("]")) if index else None))
+    return steps
+
+
+def field_at(schema: type[BaseModel], path: str) -> FieldInfo:
+    """The schema field a passage path ends in: its description tells a model what belongs there."""
+    model, field = schema, None
+    for name, index in _steps(path):
+        field = model.model_fields[name]
+        annotation = get_args(field.annotation)[0] if index is not None else field.annotation
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            model = annotation
+    return field
+
+
+def replace_at(payload: BaseModel, path: str, text: str) -> BaseModel:
+    """A copy of the payload with the passage at `path` replaced, validated
+    against the format's schema. Raises ValidationError if it no longer fits."""
+    data = payload.model_dump()
+    *parents, (name, index) = _steps(path)
+    node = data
+    for parent, i in parents:
+        node = node[parent] if i is None else node[parent][i]
+    if index is None:
+        node[name] = text
+    else:
+        node[name][index] = text
+    return type(payload).model_validate(data)
 
 
 PROMPT = """You are checking a piece of writing against the brief it was
@@ -172,10 +212,13 @@ def _judge_schema(passage_ids: list[str], item_ids: list[str]) -> type[BaseModel
     )
 
 
-async def ground(payload: BaseModel, brief: ContentBrief) -> Grounding:
+async def ground(payload: BaseModel, brief: ContentBrief, paths: set[str] | None = None) -> Grounding:
     """Grounds against the whole brief, IOCs included, whether or not the format is public:
-    this asks whether a passage is true to the source, not whether it may be published."""
-    found = passages(payload)
+    this asks whether a passage is true to the source, not whether it may be published.
+
+    `paths` limits the check to those passages, e.g. one just regenerated.
+    """
+    found = [(path, text) for path, text in passages(payload) if paths is None or path in paths]
     items = _items(brief)
     by_id = {i.id: i for i in items}
     known = set(NUMBER.findall(brief_for_prompt(brief, public=False)))

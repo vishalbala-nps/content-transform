@@ -1,4 +1,4 @@
-import type { FormatInfo, Job, JobSummary } from "@/lib/types"
+import type { FormatInfo, FormatResult, Job, JobSummary } from "@/lib/types"
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
@@ -58,6 +58,53 @@ export function artifactUrl(
   filename: string
 ): string {
   return `/api/jobs/${jobId}/files/${encodeURIComponent(format)}/${encodeURIComponent(filename)}`
+}
+
+// Revising one passage of a format's output. Each returns the format's new
+// result: payload, files, warnings and grounding, already saved on the job.
+function revise(
+  jobId: string,
+  format: string,
+  action: "edit" | "accept" | "regenerate",
+  body: object
+): Promise<FormatResult> {
+  return request(
+    `/api/jobs/${jobId}/outputs/${encodeURIComponent(format)}/${action}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  )
+}
+
+// The reviewer's text is trusted: it is not checked against the brief.
+export function editPassage(
+  jobId: string,
+  format: string,
+  path: string,
+  text: string
+): Promise<FormatResult> {
+  return revise(jobId, format, "edit", { path, text })
+}
+
+// `accepted: false` undoes an earlier accept.
+export function acceptPassage(
+  jobId: string,
+  format: string,
+  path: string,
+  accepted: boolean
+): Promise<FormatResult> {
+  return revise(jobId, format, "accept", { path, accepted })
+}
+
+// Always asks the model again; the dev cache is skipped.
+export function regeneratePassage(
+  jobId: string,
+  format: string,
+  path: string
+): Promise<FormatResult> {
+  return revise(jobId, format, "regenerate", { path })
 }
 
 export function listJobs(): Promise<JobSummary[]> {

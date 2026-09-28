@@ -20,7 +20,8 @@ local model that needs no network or quota. Callers never know which one ran.
   (`OLLAMA_NUM_CTX`) because Ollama's default of 4096 tokens silently cuts
   long sources; a call that fills the window fails instead.
 - Dev cache: responses that validate are stored under `.cache/llm/`, keyed on
-  (model, prompt, schema). On by default; `LLM_CACHE=0` for demo runs.
+  (model, prompt, schema). On by default; `LLM_CACHE=0` for demo runs. A
+  caller can skip the read for one call (`cached=False`).
   `LLM_CACHE_DELAY_S` makes each cache hit wait like a real call, so job
   progress, closing the tab and restarts can be tested without using quota.
 """
@@ -208,14 +209,18 @@ async def _generate_ollama(model: str, prompt: str, json_schema: dict) -> tuple[
     return body.get("message", {}).get("content", ""), stats
 
 
-async def complete_json(schema: type[T], prompt: str, model: str | None = None) -> T:
-    """Fill `schema` from `prompt`. Retries once with the validation error appended."""
+async def complete_json(schema: type[T], prompt: str, model: str | None = None, *, cached: bool = True) -> T:
+    """Fill `schema` from `prompt`. Retries once with the validation error appended.
+
+    `cached=False` skips reading the dev cache, for a caller that wants a new
+    answer to a prompt already asked; the answer is still stored.
+    """
     settings = get_settings()
     model = model or settings.llm_model
     json_schema = schema.model_json_schema()
 
     cache = _cache_path(model, prompt, json_schema) if settings.llm_cache else None
-    if cache and cache.exists():
+    if cache and cached and cache.exists():
         try:
             result = schema.model_validate_json(cache.read_text())
             if settings.llm_cache_delay_s:

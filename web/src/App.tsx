@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { FileUp, LoaderCircle, X } from "lucide-react"
 
-import { BriefPanel } from "@/components/brief-panel"
 import { JobHistory } from "@/components/job-history"
 import { JobProgress } from "@/components/job-progress"
 import { OutputPanel } from "@/components/output-panel"
+import { SourcePane } from "@/components/source-pane"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -20,7 +20,8 @@ import {
   listSourceTypes,
   watchJob,
 } from "@/lib/api"
-import type { FormatInfo, Job, JobSummary } from "@/lib/types"
+import { resolveSelection, type SelectionKey } from "@/lib/grounding"
+import type { FormatInfo, FormatResult, Job, JobSummary } from "@/lib/types"
 
 // The open job lives in the URL (?job=<id>), so a refresh, a reopened tab or
 // a shared link shows the same job, finished or still running.
@@ -59,6 +60,9 @@ export function App() {
   const [job, setJob] = useState<Job | null>(null)
   const [reconnecting, setReconnecting] = useState(false)
   const [history, setHistory] = useState<JobSummary[]>([])
+  // The passage being traced to the source. Belongs to one job, so opening
+  // another job clears it.
+  const [selection, setSelection] = useState<SelectionKey | null>(null)
   // Opening an existing job (a link or the history list) fills the form with
   // its input. A job just submitted already matches the form.
   const fillForm = useRef(jobId !== null)
@@ -91,6 +95,7 @@ export function App() {
     function onPopState() {
       fillForm.current = true
       setError(null)
+      setSelection(null)
       setJobId(jobIdFromUrl())
     }
     window.addEventListener("popstate", onPopState)
@@ -124,11 +129,25 @@ export function App() {
   // than the previous job.
   const current = job && job.id === jobId ? job : null
   const busy = submitting || (current !== null && !isFinished(current))
+  const traced = current && resolveSelection(selection, current.outputs)
+
+  // A revised passage comes back as its format's whole new result. The job
+  // row already holds it; a finished job has no event stream to send it.
+  function replaceOutput(result: FormatResult) {
+    setJob(
+      (j) =>
+        j && {
+          ...j,
+          outputs: j.outputs.map((o) => (o.name === result.name ? result : o)),
+        }
+    )
+  }
 
   function openJob(id: string, fill: boolean) {
     if (id === jobId) return
     fillForm.current = fill
     setError(null)
+    setSelection(null)
     window.history.pushState(null, "", `?job=${id}`)
     setJobId(id)
   }
@@ -297,10 +316,26 @@ export function App() {
 
       {current?.brief && (
         <div className="grid items-start gap-6 lg:grid-cols-2">
-          <BriefPanel brief={current.brief} source={current.source} />
+          <SourcePane
+            source={current.source}
+            brief={current.brief}
+            selection={traced}
+          />
           <div className="space-y-6">
             {current.outputs.map((o) => (
-              <OutputPanel key={o.name} jobId={current.id} result={o} />
+              <OutputPanel
+                key={o.name}
+                jobId={current.id}
+                result={o}
+                brief={current.brief!}
+                selectedPath={
+                  selection?.format === o.name ? selection.path : null
+                }
+                onSelect={(path) =>
+                  setSelection(path === null ? null : { format: o.name, path })
+                }
+                onRevised={replaceOutput}
+              />
             ))}
           </div>
         </div>

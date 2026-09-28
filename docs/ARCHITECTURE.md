@@ -159,7 +159,7 @@ constraints still hold.
 
 ```
 app/
-  core/          config.py, llm.py, jobs.py, storage.py
+  core/          config.py, llm.py, jobs.py, storage.py, revise.py
   ingest/        base.py, common.py, registry.py, url.py, text.py, docx.py,
                  pdf.py, html.py, image.py
   understand/    brief.py, schemas.py, prompts/
@@ -207,6 +207,8 @@ Each prose field of a format's payload (a passage) is matched back to the
 brief items that support it, and therefore to `Block` ids in the source
 (`app/verify/grounding.py`, run by the format runner after `check`).
 Unsupported passages are flagged amber in the review UI rather than silently
-shipped. A PII scan and a policy check run over
+shipped. A reviewer can edit a passage (trusted, not re-checked), regenerate
+it (re-checked) or accept its flag; the format's files are rebuilt from the
+revised payload (`app/core/revise.py`). A PII scan and a policy check run over
 public-facing artefacts (for example: IOCs belong in the advisory, not in the
 LinkedIn post).

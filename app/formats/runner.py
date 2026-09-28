@@ -25,13 +25,20 @@ class FormatResult(BaseModel):
     grounding: Grounding | None = None  # None on failed formats and on jobs from before S7
 
 
+async def render_format(
+    adapter: OutputAdapter, payload: BaseModel, config: GenerationConfig, brief: ContentBrief
+) -> tuple[list[Artifact], list[str]]:
+    """Artifacts and warnings from a filled payload. No model call: also used after a passage is revised."""
+    # Off the event loop: a PDF or deck takes long enough to stall progress streams.
+    render_brief = brief_for_render(brief, public=adapter.public)
+    artifacts = await asyncio.to_thread(adapter.render, payload, config, render_brief)
+    return artifacts, adapter.check(payload, artifacts)
+
+
 async def run_format(adapter: OutputAdapter, brief: ContentBrief, config: GenerationConfig) -> FormatResult:
     try:
         payload = await complete_json(adapter.schema, adapter.prompt(brief, config))
-        # Off the event loop: a PDF or deck takes long enough to stall progress streams.
-        render_brief = brief_for_render(brief, public=adapter.public)
-        artifacts = await asyncio.to_thread(adapter.render, payload, config, render_brief)
-        warnings = adapter.check(payload, artifacts)
+        artifacts, warnings = await render_format(adapter, payload, config, brief)
         # Against the full brief: a public format's missing IOCs are policy, not grounding.
         grounding = await ground(payload, brief)
     except Exception as e:

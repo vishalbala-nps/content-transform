@@ -540,3 +540,106 @@ S7a as built:
   payload and are grounded by construction.
 - A job whose brief has no claims now fails before any format is written,
   closing the item left open in S4.
+
+**2026-09-28 — S7b: review works on passages, not on the rendered text.**
+- The Review tab lists the payload's passages, not the markdown artifact.
+  Grounding is per passage, and finding a passage again inside rendered
+  markdown would mean matching text the renderer has rearranged. The Text
+  tab keeps the rendered artifact, and Copy still copies that.
+- Passages are labelled from their paths ("Slides 3 › notes"), so the UI
+  still knows nothing about any format.
+- The frontend rebuilds the brief's item ids (`c3`, `s1`, `src`...) in
+  `web/src/lib/grounding.ts` to highlight them. The scheme is duplicated
+  from `_items()` in `grounding.py`, and a comment on each side says so.
+  Sending the items with every report was the alternative: the same list
+  repeated once per format.
+- Highlighting what a passage rests on is sky blue, not amber: amber means
+  "needs review", blue means "look here".
+- Added the shadcn `tabs` component (`shadcn add tabs`). It builds on
+  `radix-ui`, already installed, so no new dependency.
+- On a phone the panes stack and the source is not its own scroll area, so
+  selecting a passage highlights its blocks but does not scroll to them.
+  Acceptable for a review tool used on a laptop.
+- Found while testing: on the security advisory the deck's speaker notes
+  also say "thousands of appliances" for the source's "an estimated
+  4,200", and the grounding check passed them there while flagging it in
+  the advisory. Its verdicts are not consistent across formats. That needs
+  measuring once evals resume, not a prompt change made from one example.
+
+**2026-09-28 — S7c: edit, accept or regenerate one passage; edits are trusted.**
+- A reviewer has three actions on any passage: edit it, regenerate it, or
+  accept its flag (and undo that). Showing flags without a way to act on
+  them left the PDF and deck shipping the flagged wording.
+- Edited text is trusted, not checked against the brief (the user's call:
+  the reviewer is the authority). It is marked "edited · not checked" and
+  keeps no verdict, items or blocks, since those described the old text.
+- A regenerated passage is the model's, so it is grounded again, alone
+  (`ground(..., paths={path})`), and marked "regenerated". The prompt is the
+  format's own prompt, so the brief view and IOC policy are the same, plus
+  the current payload, the field's schema description and the passage's
+  flag reasons, with "rewrite only this field".
+- Accepting keeps the text and its reasons, struck through in the UI, and
+  the passage stops counting as flagged.
+- Every action works by payload path, so no format declares anything. Edit
+  and regenerate put the text into the payload, validate it against the
+  format's schema, then render, check and save the format exactly as the
+  job does (`render_format` in the runner and `save_output` in jobs are
+  shared with it). The Markdown, PDF and deck change together, under the
+  same file names.
+- Three `POST /api/jobs/{id}/outputs/{format}/{edit|accept|regenerate}`
+  routes. Each waits and returns the format's new result, which the UI
+  merges into the job, since a finished job's event stream has closed.
+- Revisions run one at a time behind one lock, and write only their own
+  format's result, re-reading the row just before, so they cannot overwrite
+  another format even while the job is running.
+- Regenerate uses the dev cache by default; "Regenerate (no cache)" skips
+  reading it (`complete_json(..., cached=False)`; the answer is still
+  stored). Since the prompt includes the current output, a repeat
+  regenerate after a change is a new prompt and asks the model anyway;
+  the cache only answers when the same output in the same state was
+  rewritten before.
+- Checked on Gemini through the API and in headless Chrome: accept and
+  undo, an edit that removed "data exfiltration" from the advisory PDF, and
+  regenerations of an advisory paragraph and of deck speaker notes, whose
+  .pptx was rebuilt. The regenerated advisory paragraph fixed "thousands
+  of" to "an estimated 4,200" but turned "at least 37" into "37", and the
+  grounding check passed it: a second example of the check missing lost
+  qualifiers, for the evals.
+
+**2026-09-28 — One Regenerate button, always a fresh model call.**
+Reverses "from the dev cache by default, with a no-cache control" above.
+The regenerate prompt includes the current output, so after any change a
+second regenerate is a new prompt and calls the model with either button.
+The cache answered only when the same output, unchanged, was rewritten
+before, which is a development case. Two buttons were noise for a
+reviewer, and one who presses Regenerate wants a new attempt. The dev
+cache is still read for everything else, and the rewrite is still stored.
+
+**2026-09-28 — S8 before S6; the flagship demo after S6; evals resumed.**
+- S8 (parameters, brand kit, i18n, cost meter) goes next, and S6
+  (infographic) after it. Neither depends on the other: S7's grounding and
+  review cover any new format without edits, so the infographic joins them
+  when it lands. S8 first also helps S6, since its SVG templates can use
+  the brand kit from the start instead of being retrofitted.
+- S6 is deferred, not dropped. The problem statement asks for infographic
+  content ("Infographic renders, it does not describe" above), so it must
+  land before any submission or demo.
+- The pre-cached flagship demo leaves S8 and is built after S6, since it
+  captures every format's output and would otherwise be rebuilt.
+- Video stays excluded. Adding it later reverses the "Video output
+  excluded" entry, so it gets its own decision then, weighed against the
+  week of work and demo-day risk recorded there.
+- Evals resume at the start of S8, as CLAUDE.md requires after prompt
+  changes: S8 is where format prompts start reading `GenerationConfig`.
+  Testing concurrency and throttling stays paused. The harness now also
+  scores grounding: flagged passages per format with their reasons,
+  lower is better.
+- Baseline run `20260928-191922`, Gemini `gemini-3.5-flash-lite`, cache on,
+  all five formats on all five fixtures: 28/28 facts captured, kind and
+  security right on 5/5, 0 unsupported brief items, 0 IOC leaks, 0
+  invented numbers, 0 errors. 2 format warnings (government memo LinkedIn
+  post 1,781/1,300 characters, exec summary 322/300 words). 5 of 382
+  passages flagged: the two advisory flags already known, two
+  embellishments in the incident-news summary and deck notes, and a
+  research-report advisory's audience line, arguably a false flag since an
+  audience is the writer's framing, not a claim.

@@ -57,10 +57,17 @@ def score_format(result: FormatResult, brief: ContentBrief, exp: dict) -> dict:
     # Numbers the model wrote that appear nowhere in the brief it was given.
     known = set(NUMBER.findall(brief_for_prompt(brief, public=False)))
     written = set(NUMBER.findall(json.dumps(result.payload, ensure_ascii=False)))
+    grounding = result.grounding
     return {
         "warnings": result.warnings,
         "ioc_leaks": [i for i in exp["iocs"] if i in text] if ADAPTERS[result.name].public else [],
         "invented_numbers": sorted(written - known),
+        # Passages the grounding check flagged, as "path: reasons".
+        "passages": len(grounding.passages) if grounding else 0,
+        "flagged": [f"{p.path}: {'; '.join(p.reasons)}" for p in grounding.passages if p.reasons]
+        if grounding
+        else [],
+        "grounding_error": grounding.error if grounding else None,
     }
 
 
@@ -109,13 +116,18 @@ def totals(fixtures: dict) -> dict:
         "format warnings": sum(len(s["warnings"]) for s in ok),
         "IOC leaks": sum(len(s["ioc_leaks"]) for s in ok),
         "invented numbers": sum(len(s["invented_numbers"]) for s in ok),
+        # .get: runs from before S7 have no grounding scores.
+        "flagged passages": sum(len(s.get("flagged", [])) for s in ok),
+        "passages": sum(s.get("passages", 0) for s in ok),
         "errors": len(fixtures) - len(briefs) + len(outputs) - len(ok),
     }
 
 
 def report(summary: dict, previous: dict | None) -> str:
     prev_totals = previous["totals"] if previous else {}
-    lower_better = {"unsupported items", "format warnings", "IOC leaks", "invented numbers", "errors"}
+    lower_better = {
+        "unsupported items", "format warnings", "IOC leaks", "invented numbers", "flagged passages", "errors"
+    }  # fmt: skip
     lines = [f"# Eval run {summary['run']}", "", f"model {summary['model']}, cache {summary['cache']}", ""]
     if previous:
         lines += [f"Compared with {previous['run']}.", ""]
@@ -136,16 +148,20 @@ def report(summary: dict, previous: dict | None) -> str:
             f"| {', '.join(b['missed'])} |"
         )
 
-    lines += ["", "## Formats", "", "| Fixture | Format | Warnings | IOC leaks | Invented numbers |",
-              "|---|---|---|---|---|"]  # fmt: skip
+    lines += ["", "## Formats", "",
+              "| Fixture | Format | Warnings | IOC leaks | Invented numbers | Flagged passages |",
+              "|---|---|---|---|---|---|"]  # fmt: skip
     for name, f in summary["fixtures"].items():
         for fmt, s in f["formats"].items():
             if "error" in s:
-                lines.append(f"| {name} | {fmt} | error: {s['error']} |||")
+                lines.append(f"| {name} | {fmt} | error: {s['error']} ||||")
                 continue
+            flagged = "<br>".join(s["flagged"]) or f"0 of {s['passages']}"
+            if s["grounding_error"]:
+                flagged += f"<br>grounding error: {s['grounding_error']}"
             lines.append(
                 f"| {name} | {fmt} | {'; '.join(s['warnings'])} | {', '.join(s['ioc_leaks'])} "
-                f"| {', '.join(s['invented_numbers'])} |"
+                f"| {', '.join(s['invented_numbers'])} | {flagged} |"
             )
     return "\n".join(lines) + "\n"
 

@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Check, Copy, Download } from "lucide-react"
 
+import { PassageList } from "@/components/passage-list"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -11,12 +12,21 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { artifactUrl } from "@/lib/api"
+import { isFlagged } from "@/lib/grounding"
 import { cn } from "@/lib/utils"
-import type { Artifact, FormatResult, Grounding } from "@/lib/types"
+import type {
+  Artifact,
+  ContentBrief,
+  FormatResult,
+  Grounding,
+} from "@/lib/types"
 
 // One card per generated format. Knows nothing about any particular format:
-// everything it shows comes from the Artifact fields and the adapter's warnings.
+// everything it shows comes from the Artifact fields, the adapter's warnings
+// and the grounding report, whose passages are found from the payload.
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
@@ -61,9 +71,8 @@ function ArtifactBody({ artifact }: { artifact: Artifact }) {
   )
 }
 
-// A count for now; S7b shows each passage beside the source.
 function GroundingSummary({ grounding }: { grounding: Grounding }) {
-  const flagged = grounding.passages.filter((p) => p.reasons.length > 0)
+  const flagged = grounding.passages.filter(isFlagged)
   return (
     <p
       className={cn(
@@ -98,12 +107,84 @@ function fileKind(artifact: Artifact): string {
   )
 }
 
-export function OutputPanel({
+function Body({
   jobId,
   result,
+  brief,
+  selectedPath,
+  onSelect,
+  onRevised,
 }: {
   jobId: string
   result: FormatResult
+  brief: ContentBrief
+  selectedPath: string | null
+  onSelect: (path: string | null) => void
+  onRevised: (result: FormatResult) => void
+}) {
+  const [flaggedOnly, setFlaggedOnly] = useState(false)
+  const text = result.artifacts
+    .filter((a) => a.text !== null)
+    .map((a) => <ArtifactBody key={a.filename} artifact={a} />)
+  const grounding = result.grounding
+  // Jobs from before grounding existed have only the text.
+  if (!grounding) return text
+
+  const flagged = grounding.passages.filter(isFlagged)
+  // A passage just fixed or accepted stays in view while it is selected.
+  const shown = flaggedOnly
+    ? grounding.passages.filter((p) => isFlagged(p) || p.path === selectedPath)
+    : grounding.passages
+  return (
+    <Tabs defaultValue="review">
+      <TabsList>
+        <TabsTrigger value="review">Review</TabsTrigger>
+        <TabsTrigger value="text">Text</TabsTrigger>
+      </TabsList>
+      <TabsContent value="review" className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <GroundingSummary grounding={grounding} />
+          {flagged.length > 0 && (
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Checkbox
+                checked={flaggedOnly}
+                onCheckedChange={(on) => setFlaggedOnly(on === true)}
+              />
+              Flagged only
+            </label>
+          )}
+        </div>
+        <PassageList
+          jobId={jobId}
+          format={result.name}
+          passages={shown}
+          brief={brief}
+          selectedPath={selectedPath}
+          onSelect={onSelect}
+          onRevised={onRevised}
+        />
+      </TabsContent>
+      <TabsContent value="text" className="space-y-3">
+        {text}
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+export function OutputPanel({
+  jobId,
+  result,
+  brief,
+  selectedPath,
+  onSelect,
+  onRevised,
+}: {
+  jobId: string
+  result: FormatResult
+  brief: ContentBrief
+  selectedPath: string | null // the selected passage, if it is in this format
+  onSelect: (path: string | null) => void
+  onRevised: (result: FormatResult) => void // a passage was edited, accepted or regenerated
 }) {
   // The text artifact, if any, is what Copy and the description use.
   const artifact = result.artifacts.find((a) => a.text !== null)
@@ -134,12 +215,14 @@ export function OutputPanel({
             ))}
           </ul>
         )}
-        {result.grounding && <GroundingSummary grounding={result.grounding} />}
-        {result.artifacts
-          .filter((a) => a.text !== null)
-          .map((a) => (
-            <ArtifactBody key={a.filename} artifact={a} />
-          ))}
+        <Body
+          jobId={jobId}
+          result={result}
+          brief={brief}
+          selectedPath={selectedPath}
+          onSelect={onSelect}
+          onRevised={onRevised}
+        />
       </CardContent>
       {result.artifacts.length > 0 && (
         <CardFooter className="flex flex-wrap gap-2">

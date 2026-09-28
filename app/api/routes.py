@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncIterable
+from collections.abc import AsyncIterable, Awaitable
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, Upl
 from fastapi.sse import EventSourceResponse
 from pydantic import BaseModel, Field
 
-from app.core import jobs, storage
+from app.core import jobs, revise, storage
+from app.core.llm import LLMError
 from app.db.models import Job
 from app.formats.base import Artifact, GenerationConfig
 from app.formats.registry import ADAPTERS
@@ -248,6 +249,48 @@ async def download_artifact(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{artifact.filename}"'},
     )
+
+
+class PassageEdit(BaseModel):
+    path: str
+    text: str = Field(min_length=1, max_length=10_000)
+
+
+class PassageAccept(BaseModel):
+    path: str
+    accepted: bool = True  # false undoes an earlier accept
+
+
+class PassageRegenerate(BaseModel):
+    path: str
+
+
+async def _revise(call: Awaitable[FormatResult]) -> FormatResult:
+    """Each revision returns the format's new result; the job row already holds it."""
+    try:
+        return await call
+    except (revise.ReviseError, LLMError) as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
+
+
+@router.post("/jobs/{job_id}/outputs/{format_name}/edit", response_model=FormatResult)
+async def edit_passage(job_id: str, format_name: str, req: PassageEdit) -> FormatResult:
+    """Replace a passage with the reviewer's text. Trusted: not checked against the brief."""
+    if not req.text.strip():
+        raise HTTPException(status_code=422, detail="The new text is empty.")
+    return await _revise(revise.edit(job_id, format_name, req.path, req.text.strip()))
+
+
+@router.post("/jobs/{job_id}/outputs/{format_name}/accept", response_model=FormatResult)
+async def accept_passage(job_id: str, format_name: str, req: PassageAccept) -> FormatResult:
+    return await _revise(revise.accept(job_id, format_name, req.path, req.accepted))
+
+
+@router.post("/jobs/{job_id}/outputs/{format_name}/regenerate", response_model=FormatResult)
+async def regenerate_passage(job_id: str, format_name: str, req: PassageRegenerate) -> FormatResult:
+    """Always asks the model, never the dev cache. Waits for it: seconds on
+    Gemini, up to a minute or so on Ollama."""
+    return await _revise(revise.regenerate(job_id, format_name, req.path))
 
 
 @router.get("/jobs/{job_id}/events", response_class=EventSourceResponse)
