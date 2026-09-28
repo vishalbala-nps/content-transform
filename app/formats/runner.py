@@ -10,6 +10,7 @@ from app.formats.base import Artifact, GenerationConfig, OutputAdapter
 from app.formats.brief_view import brief_for_render
 from app.formats.registry import ADAPTERS
 from app.understand.schemas import ContentBrief
+from app.verify.grounding import Grounding, ground
 
 log = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ class FormatResult(BaseModel):
     warnings: list[str]  # from the adapter's check(); never fatal
     payload: dict | None  # what the model filled, before rendering
     error: str | None
+    grounding: Grounding | None = None  # None on failed formats and on jobs from before S7
 
 
 async def run_format(adapter: OutputAdapter, brief: ContentBrief, config: GenerationConfig) -> FormatResult:
@@ -30,6 +32,8 @@ async def run_format(adapter: OutputAdapter, brief: ContentBrief, config: Genera
         render_brief = brief_for_render(brief, public=adapter.public)
         artifacts = await asyncio.to_thread(adapter.render, payload, config, render_brief)
         warnings = adapter.check(payload, artifacts)
+        # Against the full brief: a public format's missing IOCs are policy, not grounding.
+        grounding = await ground(payload, brief)
     except Exception as e:
         # Anything else is a bug in the adapter, but it still must not take
         # the other formats down with it.
@@ -45,6 +49,7 @@ async def run_format(adapter: OutputAdapter, brief: ContentBrief, config: Genera
         warnings=warnings,
         payload=payload.model_dump(),
         error=None,
+        grounding=grounding,
     )
 
 

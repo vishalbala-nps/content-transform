@@ -492,3 +492,51 @@ are brief citations (reliable on qwen3, sometimes empty on qwen2.5:1.5b, so
 test on qwen3 with `LLM_CACHE=0`) and a way to score grounding, which the
 paused evals would provide. Failing a job whose brief has no claims, still
 open from S4, belongs in S7.
+
+**2026-09-28 — S7 plan, and S7a: grounding checked after generation, per payload field.**
+S7 is split into S7a (grounding report), S7b (review UI) and S7c
+(regenerate one section). Decided for the whole slice:
+- The unit of grounding is a payload field ("a passage": `slides[2].notes`,
+  `tweets[0]`), not a sentence. Bullets, tweets and key points are about one
+  sentence already. Splitting paragraphs into sentences would mean a regex
+  over model output. For a partly supported passage the model quotes the
+  unsupported words, and code keeps the quote only if it is a verbatim
+  substring; otherwise the whole passage is flagged.
+- Grounding is a separate check after generation (`app/verify/grounding.py`),
+  not citations the format model writes as it goes. That would make every
+  format schema dynamic per brief, which S5c rejected, and would have the
+  writer mark its own work. The cost is one more model call per format;
+  the Gemini key in use is now paid, so that is accepted.
+- The review UI puts the source beside the outputs, with the brief in a
+  tab or drawer (S7b).
+- Regenerating a section is a request that waits and returns the new
+  result, not a job sent back through the worker: the job is already done
+  and its event stream closed. A section regenerates from the dev cache by
+  default; a separate control forces a fresh model call (S7c).
+S7a as built:
+- Passages are found by walking the payload: every non-empty string that is
+  not a `Literal` or `Enum` choice. No format declares anything, so a new
+  format (the infographic) is grounded with no edit.
+- The model sees the brief as items with ids (claims `c1`, stats `s1`,
+  timeline `t1`, actions `a1`, entities `e1`, plus `src`, `tldr`, `sec`)
+  and gives each passage a verdict: supported, partial, unsupported or
+  not_factual (hashtags, questions to the reader). Passage and item ids are
+  enums built per call, as block ids are for the brief, and a validator
+  requires a verdict for every passage, so a skipped one gets the usual
+  retry with the error appended.
+- Code also lists numbers in each passage that appear nowhere in the brief,
+  using the eval harness's `NUMBER` pattern, which now lives in
+  `grounding.py`.
+- A passage is flagged, with reasons, when it is unsupported or partial,
+  has a number not in the brief, or rests on a claim, stat, timeline item or
+  action that cites no source block. The source profile, entities and
+  security details never carry citations, so resting on them is not a gap.
+- Grounding runs against the full brief, IOCs included, for public formats
+  too: it asks whether a passage is true to the source; whether it may be
+  published is the IOC policy's job.
+- The report is `FormatResult.grounding` (not a frozen contract). A failed
+  grounding call keeps the format and its number check and records the
+  error. Values that `render()` copies from the brief are not in the
+  payload and are grounded by construction.
+- A job whose brief has no claims now fails before any format is written,
+  closing the item left open in S4.

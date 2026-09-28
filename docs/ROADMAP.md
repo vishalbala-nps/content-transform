@@ -119,6 +119,23 @@ Claim-to-block linking. Amber highlight for unsupported sentences.
 Regenerate one section or one slide without re-running the whole job.
 Source and output side by side.
 
+- **S7a — grounding report.** Done. Every prose field of a format's payload
+  is matched to the brief items behind it by one extra model call per
+  format, plus a code check for numbers not in the brief. The report is on
+  each format result; the output card shows a count for now. Jobs whose
+  brief has no claims fail. Checked on Gemini (`gemini-3.5-flash-lite`) with
+  two fixtures, directly and through the API: every grounding call validated
+  first time (4-11 s each). Of 82 passages on the security advisory, the only
+  two flags were both real (the advisory's "thousands of appliances" for the
+  source's "an estimated 4,200", and an invented "data exfiltration").
+  Hashtags and closing questions came back not_factual. Older jobs load
+  without a report.
+- **S7b — review UI.** Source blocks beside the outputs, brief in a tab or
+  drawer, flagged passages amber, click a passage to see its claims and
+  blocks.
+- **S7c — regenerate one section.** By payload path, from the cache by
+  default, with a control to force a fresh call.
+
 ## S8 — Parameters, brand kit, i18n, polish
 Full `GenerationConfig` surface in the UI. Brand kit consumed by renderers.
 Indian language output via post-schema translation. Cost and token meter.

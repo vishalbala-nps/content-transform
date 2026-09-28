@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card"
 import { artifactUrl } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import type { Artifact, FormatResult } from "@/lib/types"
+import type { Artifact, FormatResult, Grounding } from "@/lib/types"
 
 // One card per generated format. Knows nothing about any particular format:
 // everything it shows comes from the Artifact fields and the adapter's warnings.
@@ -58,6 +58,23 @@ function ArtifactBody({ artifact }: { artifact: Artifact }) {
         </li>
       ))}
     </ol>
+  )
+}
+
+// A count for now; S7b shows each passage beside the source.
+function GroundingSummary({ grounding }: { grounding: Grounding }) {
+  const flagged = grounding.passages.filter((p) => p.reasons.length > 0)
+  return (
+    <p
+      className={cn(
+        "text-xs text-muted-foreground",
+        (flagged.length > 0 || grounding.error) &&
+          "text-amber-700 dark:text-amber-400"
+      )}
+    >
+      {grounding.error ??
+        `Grounding: ${flagged.length} of ${grounding.passages.length} passages need review`}
+    </p>
   )
 }
 
@@ -117,6 +134,7 @@ export function OutputPanel({
             ))}
           </ul>
         )}
+        {result.grounding && <GroundingSummary grounding={result.grounding} />}
         {result.artifacts
           .filter((a) => a.text !== null)
           .map((a) => (

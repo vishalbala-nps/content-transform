@@ -15,7 +15,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 from datetime import datetime
 from pathlib import Path
 
@@ -28,12 +27,11 @@ from app.formats.runner import FormatResult, run_formats
 from app.ingest.text import ingest_text
 from app.understand.brief import build_brief
 from app.understand.schemas import ContentBrief
+from app.verify.grounding import NUMBER
 
 ROOT = Path(__file__).parent
 FIXTURES = ROOT / "fixtures"
 RUNS = ROOT / "runs"
-# Standalone numbers only: "40%", "9.8", "4,200", but not the digits in "b12" or "CVE202641877".
-NUMBER = re.compile(r"\b\d+(?:[.,]\d+)*\b")
 
 
 def score_brief(brief: ContentBrief, exp: dict) -> dict:

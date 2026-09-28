@@ -35,6 +35,11 @@ log = logging.getLogger(__name__)
 
 FINISHED = ("done", "failed")
 
+NO_CLAIMS = (
+    "No claims could be drawn from the source, so no format was written. "
+    "Check that the source has readable text; a small model may also return none."
+)
+
 _wake = asyncio.Event()  # set when a job is queued
 
 
@@ -120,7 +125,11 @@ async def run_job(job_id: str) -> None:
             _update(job_id, brief=brief.model_dump(mode="json"))
         else:
             brief = ContentBrief.model_validate(job.brief)  # resuming after a restart
-        todo = [n for n in job.formats if n not in job.outputs]
+        if not brief.claims:
+            # Formats would be written from nothing, and grounding would have nothing to check.
+            _update(job_id, status="failed", error=NO_CLAIMS)
+            return
+        todo =[n for n in job.formats if n not in job.outputs]
         await asyncio.gather(*(_run_and_save(job_id, n, brief, config) for n in todo))
     except LLMError as e:
         _update(job_id, status="failed", error=str(e))

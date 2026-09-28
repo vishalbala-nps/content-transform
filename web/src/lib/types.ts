@@ -119,6 +119,23 @@ export interface FormatInfo {
   label: string
 }
 
+// One prose field of a format's payload, traced to the brief (app/verify/grounding.py).
+export interface Passage {
+  path: string // "slides[2].notes"
+  text: string
+  verdict: "supported" | "partial" | "unsupported" | "not_factual" | null
+  items: string[] // brief items: "c3", "s1", "src"
+  blocks: string[] // source blocks behind those items
+  quote: string | null // the unsupported words; null means the whole passage
+  new_numbers: string[]
+  reasons: string[] // why it needs review; empty when it does not
+}
+
+export interface Grounding {
+  passages: Passage[]
+  error: string | null // the model check failed; only the number check ran
+}
+
 export interface FormatResult {
   name: string
   label: string
@@ -126,6 +143,7 @@ export interface FormatResult {
   warnings: string[]
   payload: Record<string, unknown> | null
   error: string | null
+  grounding: Grounding | null // null on failed formats and older jobs
 }
 
 export type JobStatus = "queued" | "running" | "done" | "failed"

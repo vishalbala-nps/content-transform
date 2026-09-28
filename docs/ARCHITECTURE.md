@@ -203,8 +203,10 @@ Video is deliberately excluded. The adapter interface supports it; see
 
 ## Verification
 
-Each generated factual sentence is matched back to a `Claim`, and therefore to
-`Block` ids in the source. Unsupported sentences are flagged amber in the
-review UI rather than silently shipped. A PII scan and a policy check run over
+Each prose field of a format's payload (a passage) is matched back to the
+brief items that support it, and therefore to `Block` ids in the source
+(`app/verify/grounding.py`, run by the format runner after `check`).
+Unsupported passages are flagged amber in the review UI rather than silently
+shipped. A PII scan and a policy check run over
 public-facing artefacts (for example: IOCs belong in the advisory, not in the
 LinkedIn post).
