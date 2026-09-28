@@ -737,3 +737,71 @@ cache is still read for everything else, and the rewrite is still stored.
     (219, six actions).
   - Technical, detailed, instruct `20260928-200405`: unchanged (5 flagged,
     4 warnings); nothing in its prompts changed.
+
+**2026-09-28 — Review: delete a passage's list entry.**
+- A fourth review action beside edit, regenerate and accept. Delete
+  removes the nearest list entry holding the passage: a paragraph, tweet,
+  bullet, key point, detail, action or hashtag, and a whole slide or key
+  figure when the passage is its title, notes, value or label. Fields
+  outside any list (titles, summary, impact, bottom line) are required by
+  every layout, so they have no Delete; the reviewer edits them instead.
+  Emptying them and teaching each layout to skip empty sections was the
+  alternative, and was not chosen.
+- Worked out from the path, like the other actions, so no format declares
+  anything (`list_entry` in `grounding.py`, mirrored by `listEntry` in
+  `web/src/lib/grounding.ts`). The payload is validated after the delete,
+  so a schema minimum holds: a thread keeps 3 tweets, a slide 2 bullets
+  ("Cannot delete: at least 3 tweets are needed."). The format's files are
+  rebuilt and saved as for an edit.
+- Later entries in the list move up. Their passages keep their verdicts
+  and reviews under the new paths rather than being grounded again: their
+  text did not change.
+- The UI asks for confirmation first, naming what goes ("Delete Slides 2,
+  with everything in it?"), since a delete cannot be undone. The selection
+  is cleared afterwards, as its path now belongs to the next entry.
+- Checked through the API (thread minimum, a required title, an exec
+  summary action gone from its markdown and PDF, a whole slide gone from
+  the .pptx) and in headless Chrome driven over the DevTools protocol.
+
+**2026-09-28 — S8b: usage metered by context, priced per call, one new column.**
+- `complete_json` records every call's tokens (or a dev-cache hit) in
+  `app/core/usage.py`. Code that wants a step's cost wraps it in
+  `metered()`; every call inside the block counts, including calls in
+  tasks it starts, since asyncio copies the context. Chosen over returning
+  usage from `complete_json`, which would change every caller for
+  bookkeeping.
+- Recorded per step: the brief, and per format its writing, its grounding
+  check and its revisions (a Regenerate's rewrite and re-check). Calls are
+  recorded when they return, before validation: a response that fails it
+  was still billed. A failed format, a failed brief and a failed
+  regenerate all keep what they spent. A brief cut short by a restart adds
+  to its earlier attempt instead of replacing it.
+- Cost is worked out per call from the price table in `usage.py` when the
+  call is made, so a later price change never rewrites an old job.
+  `gemini-3.5-flash-lite` paid tier, Standard: $0.30 input, $0.03 cached
+  input, $2.50 output (thinking included) per million tokens, from
+  ai.google.dev/gemini-api/docs/pricing, updated 2026-09-24. A Gemini
+  model not in the table is counted as unpriced, not free. Ollama is
+  priced at zero. Dev-cache hits count as cached calls with no tokens and
+  no cost, so a cached eval run shows $0; it measures spend, not what a
+  job would cost uncached.
+- Storage: a format's usage is on its `FormatResult`, in the JSON the job
+  already stores. The brief has nowhere like that (`ContentBrief` is
+  frozen), so jobs gain one nullable JSON column, `brief_usage`. Supersedes
+  "no Alembic until a schema actually changes" for this case: `init_db`
+  now adds any missing nullable column with `ALTER TABLE`, using the
+  column's SQLAlchemy type, and refuses a missing required one. That
+  covers a new nullable column on SQLite and Postgres alike; anything else
+  still needs a real migration.
+- The UI sums the parts itself rather than trusting a server total, since
+  a revised passage replaces one output in the page. One line under the
+  job's progress, "7 model calls · 9.2k tokens · est. $0.0080", opens into
+  a table by step. Jobs from before S8b show no meter.
+- Evals print a usage line per run (not scored: with the cache on it
+  mostly measures what was cached).
+- Checked with an uncached eval run (3 calls: token counts equal the
+  model's own log lines, cost matches the table by hand, $0.0065), a fresh
+  API job (brief $0.0025; each short format about $0.0009 to write and
+  $0.0014 to check), a Regenerate (2 calls under revisions, generation
+  untouched), a fully cached job ($0, calls counted as cached), the column
+  step on a copy of the dev database, and the meter in headless Chrome.

@@ -23,6 +23,7 @@ from sqlalchemy import select, update
 
 from app.core import storage
 from app.core.llm import LLMError
+from app.core.usage import Usage, metered
 from app.db.models import Job, session
 from app.formats.base import GenerationConfig
 from app.formats.registry import ADAPTERS
@@ -51,6 +52,7 @@ def create_job(source: SourceDocument, formats: list[str], config: GenerationCon
         config=config.model_dump(mode="json"),
         source=source.model_dump(mode="json"),
         brief=None,
+        brief_usage=None,
         outputs={},
         error=None,
     )
@@ -126,7 +128,14 @@ async def run_job(job_id: str) -> None:
     config = GenerationConfig.model_validate(job.config)
     try:
         if job.brief is None:
-            brief = await build_brief(SourceDocument.model_validate(job.source))
+            # Added to an attempt a restart cut short, if any.
+            usage = Usage.model_validate(job.brief_usage) if job.brief_usage else Usage()
+            with metered(usage):
+                try:
+                    brief = await build_brief(SourceDocument.model_validate(job.source))
+                finally:
+                    # Saved even when the brief fails or is cut short: its calls were still billed.
+                    _update(job_id, brief_usage=usage.model_dump())
             _update(job_id, brief=brief.model_dump(mode="json"))
         else:
             brief = ContentBrief.model_validate(job.brief)  # resuming after a restart
@@ -134,7 +143,7 @@ async def run_job(job_id: str) -> None:
             # Formats would be written from nothing, and grounding would have nothing to check.
             _update(job_id, status="failed", error=NO_CLAIMS)
             return
-        todo =[n for n in job.formats if n not in job.outputs]
+        todo = [n for n in job.formats if n not in job.outputs]
         await asyncio.gather(*(_run_and_save(job_id, n, brief, config) for n in todo))
     except LLMError as e:
         _update(job_id, status="failed", error=str(e))

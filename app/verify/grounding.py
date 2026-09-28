@@ -158,6 +158,42 @@ def replace_at(payload: BaseModel, path: str, text: str) -> BaseModel:
     return type(payload).model_validate(data)
 
 
+def list_entry(path: str) -> str | None:
+    """The nearest list entry holding a passage: "slides[2].notes" -> "slides[2]",
+    "tweets[0]" -> "tweets[0]". None for a field outside any list ("summary").
+    The review UI decides whether to offer Delete the same way: keep
+    listEntry() in web/src/lib/grounding.ts in step."""
+    cut = path.rfind("]")
+    return path[: cut + 1] if cut >= 0 else None
+
+
+def delete_at(payload: BaseModel, entry: str) -> BaseModel:
+    """A copy of the payload without the list entry at `entry`, validated
+    against the format's schema. Raises ValidationError if the list would
+    fall below its minimum length."""
+    data = payload.model_dump()
+    *parents, (name, index) = _steps(entry)
+    node = data
+    for parent, i in parents:
+        node = node[parent] if i is None else node[parent][i]
+    del node[name][index]
+    return type(payload).model_validate(data)
+
+
+def path_after_delete(path: str, entry: str) -> str | None:
+    """Where a passage's path points once `entry` is deleted: None if it was
+    inside the entry, one lower if it followed it in the same list."""
+    prefix, _, index = entry[:-1].rpartition("[")
+    deleted = int(index)
+    if not path.startswith(prefix + "["):
+        return path
+    close = path.index("]", len(prefix))
+    i = int(path[len(prefix) + 1 : close])
+    if i == deleted:
+        return None
+    return path if i < deleted else f"{prefix}[{i - 1}]{path[close + 1 :]}"
+
+
 PROMPT = """You are checking a piece of writing against the brief it was
 written from. The brief is the only source of truth.
 

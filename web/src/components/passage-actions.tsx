@@ -1,9 +1,22 @@
 import { useState, type ReactNode } from "react"
-import { Check, LoaderCircle, Pencil, RefreshCw, Undo2 } from "lucide-react"
+import {
+  Check,
+  LoaderCircle,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  Undo2,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { acceptPassage, editPassage, regeneratePassage } from "@/lib/api"
+import {
+  acceptPassage,
+  deletePassage,
+  editPassage,
+  regeneratePassage,
+} from "@/lib/api"
+import { listEntry, pathLabel } from "@/lib/grounding"
 import type { FormatResult, Passage } from "@/lib/types"
 
 // What a reviewer can do with the selected passage. Each action saves on the
@@ -12,21 +25,27 @@ import type { FormatResult, Passage } from "@/lib/types"
 // - Regenerate: the model rewrites just this passage (always a new call,
 //   never the dev cache), and it is checked again.
 // - Accept: the flag is reviewed and kept as is; it can be undone.
+// - Delete: removes the list entry holding the passage (a paragraph, a
+//   tweet, a whole slide) after a confirmation; it cannot be undone. Fields
+//   outside any list are required, so they have no Delete.
 
-type Action = "edit" | "regenerate" | "accept" | "unaccept"
+type Action = "edit" | "regenerate" | "accept" | "unaccept" | "delete"
 
 export function PassageActions({
   jobId,
   format,
   passage,
   onRevised,
+  onDeleted,
 }: {
   jobId: string
   format: string
   passage: Passage
   onRevised: (result: FormatResult) => void
+  onDeleted: () => void // the passage is gone; later ones in its list moved up
 }) {
   const [draft, setDraft] = useState<string | null>(null) // null: not editing
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [busy, setBusy] = useState<Action | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -48,6 +67,7 @@ export function PassageActions({
   }
 
   const path = passage.path
+  const entry = listEntry(path)
   const errorLine = error && (
     <p role="alert" className="text-destructive">
       {error}
@@ -86,6 +106,51 @@ export function PassageActions({
             disabled={busy !== null}
             onClick={() => {
               setDraft(null)
+              setError(null)
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+        {errorLine}
+      </div>
+    )
+  }
+
+  if (confirmDelete && entry) {
+    return (
+      <div className="space-y-2">
+        <p>
+          Delete {pathLabel(entry)}
+          {entry !== path && ", with everything in it"}? It is removed from
+          every file of this output, and this cannot be undone.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={busy !== null}
+            onClick={async () => {
+              setBusy("delete")
+              setError(null)
+              try {
+                onRevised(await deletePassage(jobId, format, path))
+                onDeleted()
+              } catch (err) {
+                setError(err instanceof Error ? err.message : String(err))
+                setBusy(null)
+              }
+            }}
+          >
+            {icon("delete", <Trash2 />)}
+            Delete
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy !== null}
+            onClick={() => {
+              setConfirmDelete(false)
               setError(null)
             }}
           >
@@ -148,6 +213,22 @@ export function PassageActions({
               Accept
             </Button>
           )
+        )}
+        {entry && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy !== null}
+            title={
+              entry === path
+                ? "Remove this passage from the output"
+                : `Remove ${pathLabel(entry)} from the output`
+            }
+            onClick={() => setConfirmDelete(true)}
+          >
+            <Trash2 />
+            Delete
+          </Button>
         )}
       </div>
       {errorLine}

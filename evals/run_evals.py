@@ -22,6 +22,7 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.core.llm import LLMError
+from app.core.usage import Usage, metered, total
 from app.formats.base import GenerationConfig
 from app.formats.brief_view import brief_for_prompt
 from app.formats.registry import ADAPTERS
@@ -77,14 +78,18 @@ def score_format(result: FormatResult, brief: ContentBrief, exp: dict) -> dict:
 async def run_fixture(name: str, exp: dict, formats: list[str], config: GenerationConfig, out: Path) -> dict:
     source = ingest_text((FIXTURES / f"{name}.md").read_text())
     try:
-        brief = await build_brief(source)
+        with metered() as brief_usage:
+            brief = await build_brief(source)
     except LLMError as e:
-        return {"brief": {"error": str(e)}, "formats": {}}
+        return {"brief": {"error": str(e)}, "formats": {}, "usage": brief_usage.model_dump()}
     out.mkdir(parents=True)
     (out / "brief.json").write_text(brief.model_dump_json(indent=2))
 
     scores = {}
+    usage = total(brief_usage)
     for result in await run_formats(formats, brief, config):
+        if result.usage:
+            usage.add(total(result.usage.generate, result.usage.ground))
         fmt_dir = out / result.name
         fmt_dir.mkdir()
         if result.error:
@@ -97,7 +102,7 @@ async def run_fixture(name: str, exp: dict, formats: list[str], config: Generati
             else:
                 (fmt_dir / artifact.filename).write_text(artifact.text or "")
         scores[result.name] = score_format(result, brief, exp)
-    return {"brief": score_brief(brief, exp), "formats": scores}
+    return {"brief": score_brief(brief, exp), "formats": scores, "usage": usage.model_dump()}
 
 
 def delta(now: float, before: float | None, lower_is_better: bool = False) -> str:
@@ -140,6 +145,13 @@ def report(summary: dict, previous: dict | None) -> str:
     lines = [f"# Eval run {summary['run']}", "", f"model {summary['model']}, cache {summary['cache']}", ""]
     if changed := _non_default(summary["config"]):
         lines += [f"config: {json.dumps(changed)}", ""]
+    u = Usage.model_validate(summary["usage"])
+    lines += [
+        f"usage: {u.calls} model calls, {u.cached_calls} from cache, {u.input_tokens:,} input and "
+        f"{u.output_tokens:,} output tokens, ${u.cost_usd:.4f}"
+        + (f" plus {u.unpriced_calls} calls with no price" if u.unpriced_calls else ""),
+        "",
+    ]
     if previous:
         lines += [f"Compared with {previous['run']}.", ""]
     lines += ["| Total | Value |", "|---|---|"]
@@ -236,6 +248,7 @@ async def main() -> None:
         "cache": "on" if settings.llm_cache else "off",
         "formats": formats,
         "config": config_json,
+        "usage": total(*(Usage.model_validate(f["usage"]) for f in scored.values())).model_dump(),
         "fixtures": scored,
         "totals": totals(scored),
     }

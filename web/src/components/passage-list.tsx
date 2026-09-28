@@ -11,7 +11,7 @@ import type { ContentBrief, FormatResult, Passage } from "@/lib/types"
 // only the unsupported words are marked. An accepted flag keeps its reasons,
 // struck through. Selecting a passage lists the brief items it rests on,
 // highlights them and their blocks in the source pane, and offers the
-// reviewer's actions (passage-actions.tsx).
+// reviewer's actions: edit, regenerate, accept, delete (passage-actions.tsx).
 
 const AMBER = "bg-amber-100 dark:bg-amber-950/60"
 
@@ -153,6 +153,8 @@ export function PassageList({
                   format={format}
                   passage={p}
                   onRevised={onRevised}
+                  // Its path now belongs to the next entry, if any: deselect.
+                  onDeleted={() => onSelect(null)}
                 />
               </div>
             )}

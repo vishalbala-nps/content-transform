@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.core import jobs, revise, storage
 from app.core.llm import LLMError
+from app.core.usage import Usage
 from app.db.models import Job
 from app.formats.base import Artifact, Audience, DetailLevel, GenerationConfig, Objective, Tone
 from app.formats.registry import ADAPTERS
@@ -79,7 +80,8 @@ class JobView(BaseModel):
     steps: list[Step]
     source: SourceDocument
     brief: ContentBrief | None
-    outputs: list[FormatResult]  # finished formats only, in registry order
+    brief_usage: Usage | None  # the brief's model calls; None on jobs from before S8b
+    outputs: list[FormatResult]  # finished formats only, in registry order; each has its own usage
     error: str | None  # why the whole job failed; a format's own error is on its output
 
 
@@ -134,6 +136,7 @@ def _view(job: Job) -> JobView:
         steps=_steps(job),
         source=job.source,
         brief=job.brief,
+        brief_usage=job.brief_usage,
         outputs=[job.outputs[n] for n in job.formats if n in job.outputs],
         error=job.error,
     )
@@ -294,6 +297,10 @@ class PassageRegenerate(BaseModel):
     path: str
 
 
+class PassageDelete(BaseModel):
+    path: str
+
+
 async def _revise(call: Awaitable[FormatResult]) -> FormatResult:
     """Each revision returns the format's new result; the job row already holds it."""
     try:
@@ -320,6 +327,13 @@ async def regenerate_passage(job_id: str, format_name: str, req: PassageRegenera
     """Always asks the model, never the dev cache. Waits for it: seconds on
     Gemini, up to a minute or so on Ollama."""
     return await _revise(revise.regenerate(job_id, format_name, req.path))
+
+
+@router.post("/jobs/{job_id}/outputs/{format_name}/delete", response_model=FormatResult)
+async def delete_passage(job_id: str, format_name: str, req: PassageDelete) -> FormatResult:
+    """Remove the list entry holding the passage (a paragraph, a tweet, a whole
+    slide). Fields outside any list are required: 409."""
+    return await _revise(revise.delete(job_id, format_name, req.path))
 
 
 @router.get("/jobs/{job_id}/events", response_class=EventSourceResponse)

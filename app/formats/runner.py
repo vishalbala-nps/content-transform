@@ -3,9 +3,10 @@
 import asyncio
 import logging
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.llm import LLMError, complete_json
+from app.core.usage import Usage, metered
 from app.formats.base import Artifact, GenerationConfig, OutputAdapter
 from app.formats.brief_view import brief_for_render
 from app.formats.registry import ADAPTERS
@@ -13,6 +14,14 @@ from app.understand.schemas import ContentBrief
 from app.verify.grounding import Grounding, ground
 
 log = logging.getLogger(__name__)
+
+
+class FormatUsage(BaseModel):
+    """What a format's model calls cost. None for a part from before S8b."""
+
+    generate: Usage | None  # writing the payload, validation retry included
+    ground: Usage | None  # the grounding check
+    revise: Usage = Field(default_factory=Usage)  # regenerated passages since, each re-grounded
 
 
 class FormatResult(BaseModel):
@@ -23,6 +32,7 @@ class FormatResult(BaseModel):
     payload: dict | None  # what the model filled, before rendering
     error: str | None
     grounding: Grounding | None = None  # None on failed formats and on jobs from before S7
+    usage: FormatUsage | None = None  # None on jobs from before S8b
 
 
 async def render_format(
@@ -36,18 +46,28 @@ async def render_format(
 
 
 async def run_format(adapter: OutputAdapter, brief: ContentBrief, config: GenerationConfig) -> FormatResult:
+    # Filled as calls are made, so a format that fails still reports what it spent.
+    usage = FormatUsage(generate=Usage(), ground=Usage())
     try:
-        payload = await complete_json(adapter.schema, adapter.prompt(brief, config))
+        with metered(usage.generate):
+            payload = await complete_json(adapter.schema, adapter.prompt(brief, config))
         artifacts, warnings = await render_format(adapter, payload, config, brief)
         # Against the full brief: a public format's missing IOCs are policy, not grounding.
-        grounding = await ground(payload, brief)
+        with metered(usage.ground):
+            grounding = await ground(payload, brief)
     except Exception as e:
         # Anything else is a bug in the adapter, but it still must not take
         # the other formats down with it.
         if not isinstance(e, LLMError):
             log.exception("format %s failed", adapter.name)
         return FormatResult(
-            name=adapter.name, label=adapter.label, artifacts=[], warnings=[], payload=None, error=str(e)
+            name=adapter.name,
+            label=adapter.label,
+            artifacts=[],
+            warnings=[],
+            payload=None,
+            error=str(e),
+            usage=usage,
         )
     return FormatResult(
         name=adapter.name,
@@ -57,6 +77,7 @@ async def run_format(adapter: OutputAdapter, brief: ContentBrief, config: Genera
         payload=payload.model_dump(),
         error=None,
         grounding=grounding,
+        usage=usage,
     )
 
 

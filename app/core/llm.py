@@ -24,6 +24,8 @@ local model that needs no network or quota. Callers never know which one ran.
   caller can skip the read for one call (`cached=False`).
   `LLM_CACHE_DELAY_S` makes each cache hit wait like a real call, so job
   progress, closing the tab and restarts can be tested without using quota.
+- Usage: every call's tokens, or a cache hit, is recorded in
+  app/core/usage.py for whatever `metered()` block the caller is in.
 """
 
 import asyncio
@@ -34,7 +36,7 @@ import random
 import time
 from functools import lru_cache
 from pathlib import Path
-from typing import TypeVar
+from typing import NamedTuple, TypeVar
 
 import httpx
 from google import genai
@@ -42,6 +44,7 @@ from google.genai import errors as genai_errors
 from google.genai import types
 from pydantic import BaseModel, ValidationError
 
+from app.core import usage
 from app.core.config import get_settings
 
 T = TypeVar("T", bound=BaseModel)
@@ -57,6 +60,12 @@ THROTTLE_DELAYS_S = (5, 10, 20, 40)
 THROTTLE_CODES = {429, 504}
 
 CACHE_DIR = Path(__file__).resolve().parents[2] / ".cache" / "llm"
+
+
+class _Tokens(NamedTuple):
+    input: int
+    cached_input: int  # the part of `input` the provider served from its own cache
+    output: int  # thinking included: it is billed as output
 
 
 class LLMError(Exception):
@@ -100,17 +109,18 @@ def _ollama() -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=settings.ollama_url, timeout=settings.ollama_timeout_s)
 
 
-async def _generate(model: str, prompt: str, json_schema: dict, label: str) -> tuple[str, str]:
+async def _generate(model: str, prompt: str, json_schema: dict, label: str) -> tuple[str, str, _Tokens]:
     """One model call under the concurrency limit, to the configured provider.
 
-    Returns the response text and a one-line summary of the request for the log.
+    Returns the response text, a one-line summary of the request for the log,
+    and the tokens it used.
     """
     if get_settings().llm_provider == "ollama":
         return await _generate_ollama(model, prompt, json_schema)
     return await _generate_gemini(model, prompt, json_schema, label)
 
 
-async def _generate_gemini(model: str, prompt: str, json_schema: dict, label: str) -> tuple[str, str]:
+async def _generate_gemini(model: str, prompt: str, json_schema: dict, label: str) -> tuple[str, str, _Tokens]:
     """Retries throttling and dropped connections; see the module docstring."""
     config = types.GenerateContentConfig(
         response_mime_type="application/json",
@@ -148,18 +158,23 @@ async def _generate_gemini(model: str, prompt: str, json_schema: dict, label: st
             await asyncio.sleep(wait)
             continue
 
-        usage = response.usage_metadata
+        meta = response.usage_metadata
         stats = "request {:.1f}s prompt={} output={} thinking={}".format(
             time.perf_counter() - started,
-            usage.prompt_token_count if usage else None,
-            usage.candidates_token_count if usage else None,
-            usage.thoughts_token_count if usage else None,
+            meta.prompt_token_count if meta else None,
+            meta.candidates_token_count if meta else None,
+            meta.thoughts_token_count if meta else None,
         )
-        return response.text or "", stats
+        tokens = _Tokens(
+            input=(meta and meta.prompt_token_count) or 0,
+            cached_input=(meta and meta.cached_content_token_count) or 0,
+            output=((meta and meta.candidates_token_count) or 0) + ((meta and meta.thoughts_token_count) or 0),
+        )
+        return response.text or "", stats, tokens
     raise AssertionError("unreachable")
 
 
-async def _generate_ollama(model: str, prompt: str, json_schema: dict) -> tuple[str, str]:
+async def _generate_ollama(model: str, prompt: str, json_schema: dict) -> tuple[str, str, _Tokens]:
     settings = get_settings()
     num_ctx = settings.ollama_num_ctx
     async with _slots():
@@ -206,7 +221,8 @@ async def _generate_ollama(model: str, prompt: str, json_schema: dict) -> tuple[
     stats = "request {:.1f}s prompt={} output={}".format(
         time.perf_counter() - started, prompt_tokens, output_tokens
     )
-    return body.get("message", {}).get("content", ""), stats
+    tokens = _Tokens(input=prompt_tokens, cached_input=0, output=output_tokens)
+    return body.get("message", {}).get("content", ""), stats, tokens
 
 
 async def complete_json(schema: type[T], prompt: str, model: str | None = None, *, cached: bool = True) -> T:
@@ -226,6 +242,7 @@ async def complete_json(schema: type[T], prompt: str, model: str | None = None, 
             if settings.llm_cache_delay_s:
                 await asyncio.sleep(settings.llm_cache_delay_s)
             log.info("%s %s done from cache", model, schema.__name__)
+            usage.record_cached()
             return result
         except ValidationError:
             pass  # validators changed under the same JSON schema; regenerate
@@ -234,7 +251,9 @@ async def complete_json(schema: type[T], prompt: str, model: str | None = None, 
     started = time.perf_counter()
     attempt_prompt = prompt
     for attempt in range(2):
-        text, stats = await _generate(model, attempt_prompt, json_schema, f"{name} attempt={attempt + 1}")
+        text, stats, tokens = await _generate(model, attempt_prompt, json_schema, f"{name} attempt={attempt + 1}")
+        # Recorded before validation: a response that fails it was still billed.
+        usage.record_call(settings.llm_provider, model, *tokens)
         try:
             result = schema.model_validate_json(text)
         except ValidationError as e:

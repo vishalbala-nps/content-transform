@@ -1,4 +1,4 @@
-"""Change one passage of a format's output after generation: edit, accept or regenerate it.
+"""Change one passage of a format's output after generation: edit, accept, regenerate or delete it.
 
 A passage is addressed by its path in the payload (app/verify/grounding.py),
 so this works for every format and no format declares anything. Editing or
@@ -9,9 +9,15 @@ Markdown, the PDF and the deck all change together.
 - Edited text is the reviewer's own. It is marked "edited" and not checked
   against the brief; the reviewer is trusted.
 - Regenerating always asks the model, skipping the dev cache. The passage
-  it returns is the model's, so it is grounded again, alone.
+  it returns is the model's, so it is grounded again, alone. Both calls are
+  added to the format's `usage.revise`, even when the regenerate fails.
 - Accepting leaves the text and its reasons as they are and marks the flag as
   reviewed. It can be undone.
+- Deleting removes the nearest list entry holding the passage: a paragraph,
+  a tweet, a bullet, or a whole slide for a slide's title or notes. Fields
+  outside any list (a summary, a title) are required and cannot be deleted.
+  Later entries in the list move up, and their passages keep their verdicts
+  and reviews under the new paths. It cannot be undone.
 
 Revisions run one at a time (one lock, in one process, like the worker). Each
 reads the row, works, then replaces only its own format's result, so it never
@@ -26,11 +32,20 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.core import jobs
 from app.core.llm import complete_json
+from app.core.usage import Usage, metered
 from app.formats.base import GenerationConfig, OutputAdapter
 from app.formats.registry import ADAPTERS
-from app.formats.runner import FormatResult, render_format
+from app.formats.runner import FormatResult, FormatUsage, render_format
 from app.understand.schemas import ContentBrief
-from app.verify.grounding import Passage, field_at, ground, replace_at
+from app.verify.grounding import (
+    Passage,
+    delete_at,
+    field_at,
+    ground,
+    list_entry,
+    path_after_delete,
+    replace_at,
+)
 
 _lock = asyncio.Lock()
 
@@ -90,7 +105,17 @@ def _with_passage(result: FormatResult, passage: Passage, **update) -> FormatRes
     return result.model_copy(update={"grounding": grounding, **update})
 
 
-async def _rewrite(job_id: str, loaded: _Loaded, text: str, passage: Passage) -> FormatResult:
+def _plus_revision(usage: FormatUsage | None, spent: Usage) -> FormatUsage:
+    """The format's usage with a revision's calls added. A result from before
+    S8b has no usage; its generation stays unknown."""
+    usage = usage.model_copy(deep=True) if usage else FormatUsage(generate=None, ground=None)
+    usage.revise.add(spent)
+    return usage
+
+
+async def _rewrite(
+    job_id: str, loaded: _Loaded, text: str, passage: Passage, usage: FormatUsage | None = None
+) -> FormatResult:
     """Put `text` at the passage's path, then render, check and save the format again."""
     try:
         payload = replace_at(loaded.payload, passage.path, text)
@@ -98,7 +123,12 @@ async def _rewrite(job_id: str, loaded: _Loaded, text: str, passage: Passage) ->
         raise ReviseError(f"The new text does not fit this output: {e}", 422) from e
     artifacts, warnings = await render_format(loaded.adapter, payload, loaded.config, loaded.brief)
     result = _with_passage(
-        loaded.result, passage, artifacts=artifacts, warnings=warnings, payload=payload.model_dump()
+        loaded.result,
+        passage,
+        artifacts=artifacts,
+        warnings=warnings,
+        payload=payload.model_dump(),
+        **({"usage": usage} if usage else {}),
     )
     jobs.save_output(job_id, result)
     return result
@@ -172,15 +202,63 @@ async def regenerate(job_id: str, name: str, path: str) -> FormatResult:
             if passage.reasons
             else "",
         )
-        new = await complete_json(_Rewrite, prompt, cached=False)
-        text = new.text.strip()
-        if not text:
-            raise ReviseError("The model returned an empty rewrite. Try again.", 502)
+        spent = Usage()
+        try:
+            with metered(spent):
+                new = await complete_json(_Rewrite, prompt, cached=False)
+                text = new.text.strip()
+                if not text:
+                    raise ReviseError("The model returned an empty rewrite. Try again.", 502)
 
-        # Grounded again, alone, against the payload the text will sit in.
-        payload = replace_at(loaded.payload, path, text)
-        grounding = await ground(payload, loaded.brief, paths={path})
+                # Grounded again, alone, against the payload the text will sit in.
+                payload = replace_at(loaded.payload, path, text)
+                grounding = await ground(payload, loaded.brief, paths={path})
+        except Exception:
+            if spent.calls:  # billed even though nothing changes: keep the record
+                usage = _plus_revision(loaded.result.usage, spent)
+                jobs.save_output(job_id, loaded.result.model_copy(update={"usage": usage}))
+            raise
         checked = grounding.passages[0]
         if grounding.error:
             checked.reasons.append(grounding.error)
-        return await _rewrite(job_id, loaded, text, checked.model_copy(update={"review": "regenerated"}))
+        return await _rewrite(
+            job_id,
+            loaded,
+            text,
+            checked.model_copy(update={"review": "regenerated"}),
+            usage=_plus_revision(loaded.result.usage, spent),
+        )
+
+
+async def delete(job_id: str, name: str, path: str) -> FormatResult:
+    """Remove the list entry holding the passage at `path`, then render, check and save."""
+    async with _lock:
+        loaded = _load(job_id, name, path)
+        entry = list_entry(path)
+        if entry is None:
+            raise ReviseError("This section is required in this output. Edit it instead of deleting it.", 409)
+        try:
+            payload = delete_at(loaded.payload, entry)
+        except ValidationError as e:
+            field = field_at(loaded.adapter.schema, entry)
+            least = next((m.min_length for m in field.metadata if hasattr(m, "min_length")), None)
+            what = entry[: entry.rfind("[")].rpartition(".")[2].replace("_", " ")
+            message = f"Cannot delete: at least {least} {what} are needed." if least else str(e)
+            raise ReviseError(message, 422) from e
+
+        artifacts, warnings = await render_format(loaded.adapter, payload, loaded.config, loaded.brief)
+        passages = []
+        for p in loaded.result.grounding.passages:
+            moved = path_after_delete(p.path, entry)
+            if moved is not None:
+                passages.append(p.model_copy(update={"path": moved}))
+        result = loaded.result.model_copy(
+            update={
+                "artifacts": artifacts,
+                "warnings": warnings,
+                "payload": payload.model_dump(),
+                "grounding": loaded.result.grounding.model_copy(update={"passages": passages}),
+            }
+        )
+        jobs.save_output(job_id, result)
+        return result

@@ -168,7 +168,12 @@ Malayalam, Kannada, Telugu. UI polish is not part of S8; it comes later.
   tightened after the first run (14 flagged passages down to 6). Open:
   brief exec summaries of sources with many actions still run past 200
   words.
-- **S8b — cost and token meter.**
+- **S8b — cost and token meter.** Done. Every model call's tokens and
+  estimated cost are recorded per step (brief; each format's writing,
+  grounding check and revisions) and shown under the job's progress,
+  opening into a table. Evals print a usage line. Checked with uncached
+  calls against the model's own token counts, through the API and in
+  headless Chrome.
 - **S8c — brand kits**, saved on the server, used by the PDF and deck
   renderers.
 - **S8d — Indian-language output**, translated after the payload is filled.

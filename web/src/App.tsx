@@ -6,6 +6,7 @@ import { JobProgress } from "@/components/job-progress"
 import { JobSettingsFields } from "@/components/job-settings"
 import { OutputPanel } from "@/components/output-panel"
 import { SourcePane } from "@/components/source-pane"
+import { UsageMeter } from "@/components/usage-meter"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -319,6 +320,7 @@ export function App() {
           )}
         </div>
         {current && <JobProgress steps={current.steps} />}
+        {current && <UsageMeter job={current} />}
         {current?.error && (
           <p role="alert" className="text-sm text-destructive">
             {current.error}

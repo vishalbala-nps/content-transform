@@ -47,6 +47,15 @@ export function pathLabel(path: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1)
 }
 
+// What Delete removes: the nearest list entry holding the passage, e.g.
+// "slides[2].notes" -> "slides[2]" (the whole slide), "tweets[0]" -> itself.
+// Null for a field outside any list, which is required. Must match
+// list_entry() in app/verify/grounding.py.
+export function listEntry(path: string): string | null {
+  const cut = path.lastIndexOf("]")
+  return cut >= 0 ? path.slice(0, cut + 1) : null
+}
+
 // What the selected passage rests on, in the source and brief panes. Not
 // amber: amber means "needs review", this means "look here".
 export const HIGHLIGHT =

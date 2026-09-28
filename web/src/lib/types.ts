@@ -175,6 +175,25 @@ export interface Grounding {
   error: string | null // the model check failed; only the number check ran
 }
 
+// Model calls and what they cost (app/core/usage.py). Cost is estimated
+// from list prices when each call was made.
+export interface Usage {
+  calls: number // answered by the provider
+  cached_calls: number // answered from the dev cache: no tokens, no cost
+  input_tokens: number
+  cached_input_tokens: number
+  output_tokens: number // thinking included
+  cost_usd: number
+  unpriced_calls: number // calls to a model with no known price; not in cost_usd
+}
+
+// A part is null on outputs from before usage was recorded.
+export interface FormatUsage {
+  generate: Usage | null
+  ground: Usage | null
+  revise: Usage // regenerated passages, each checked again
+}
+
 export interface FormatResult {
   name: string
   label: string
@@ -183,6 +202,7 @@ export interface FormatResult {
   payload: Record<string, unknown> | null
   error: string | null
   grounding: Grounding | null // null on failed formats and older jobs
+  usage: FormatUsage | null // null on older jobs
 }
 
 export type JobStatus = "queued" | "running" | "done" | "failed"
@@ -203,6 +223,7 @@ export interface Job {
   steps: Step[]
   source: SourceDocument
   brief: ContentBrief | null
+  brief_usage: Usage | null // null on older jobs
   outputs: FormatResult[] // finished formats only
   error: string | null // why the whole job failed
 }

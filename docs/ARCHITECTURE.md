@@ -175,7 +175,7 @@ constraints still hold.
 
 ```
 app/
-  core/          config.py, llm.py, jobs.py, storage.py, revise.py
+  core/          config.py, llm.py, usage.py, jobs.py, storage.py, revise.py
   ingest/        base.py, common.py, registry.py, url.py, text.py, docx.py,
                  pdf.py, html.py, image.py
   understand/    brief.py, schemas.py, prompts/
@@ -200,7 +200,8 @@ storage/         artifacts/
 | DB       | SQLite now, Postgres-shaped models      | swap the URL later |
 | Storage  | local dir behind a 4-method interface   | S3 is a small swap |
 | Progress | SSE off the job table                   | |
-| LLM      | Gemini free tier, Ollama fallback       | one client, provider in config |
+| LLM      | Gemini (paid key), Ollama fallback      | one client, provider in config |
+| Usage    | `metered()` blocks over `complete_json` | tokens and estimated cost per step |
 | Frontend | React + Vite + Tailwind + shadcn/ui     | |
 
 ## Output formats (current scope)
@@ -224,7 +225,9 @@ brief items that support it, and therefore to `Block` ids in the source
 (`app/verify/grounding.py`, run by the format runner after `check`).
 Unsupported passages are flagged amber in the review UI rather than silently
 shipped. A reviewer can edit a passage (trusted, not re-checked), regenerate
-it (re-checked) or accept its flag; the format's files are rebuilt from the
-revised payload (`app/core/revise.py`). A PII scan and a policy check run over
+it (re-checked), accept its flag, or delete the list entry holding it (a
+paragraph, a tweet, a whole slide; fields outside any list are required);
+the format's files are rebuilt from the revised payload
+(`app/core/revise.py`). A PII scan and a policy check run over
 public-facing artefacts (for example: IOCs belong in the advisory, not in the
 LinkedIn post).

@@ -84,7 +84,7 @@ export function artifactUrl(
 function revise(
   jobId: string,
   format: string,
-  action: "edit" | "accept" | "regenerate",
+  action: "edit" | "accept" | "regenerate" | "delete",
   body: object
 ): Promise<FormatResult> {
   return request(
@@ -124,6 +124,16 @@ export function regeneratePassage(
   path: string
 ): Promise<FormatResult> {
   return revise(jobId, format, "regenerate", { path })
+}
+
+// Removes the list entry holding the passage (see listEntry in
+// lib/grounding.ts). Cannot be undone.
+export function deletePassage(
+  jobId: string,
+  format: string,
+  path: string
+): Promise<FormatResult> {
+  return revise(jobId, format, "delete", { path })
 }
 
 export function listJobs(): Promise<JobSummary[]> {
