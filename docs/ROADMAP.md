@@ -174,8 +174,13 @@ Malayalam, Kannada, Telugu. UI polish is not part of S8; it comes later.
   opening into a table. Evals print a usage line. Checked with uncached
   calls against the model's own token counts, through the API and in
   headless Chrome.
-- **S8c — brand kits**, saved on the server, used by the PDF and deck
-  renderers.
+- **S8c — brand kits.** Done. Kits (organisation name, main and text
+  colours, font, logo, banned phrases) are saved on the server and managed
+  from a dialog beside the settings. A job keeps a copy of its kit. The
+  PDFs and the deck take their colours, font, name and logo from it;
+  banned phrases go into every format's prompt and are warned on.
+  Without a kit the files are byte-identical to before. Checked through
+  the API, in PowerPoint, and in headless Chrome.
 - **S8d — Indian-language output**, translated after the payload is filled.
 
 The pre-cached flagship demo document moved out of S8: it captures every

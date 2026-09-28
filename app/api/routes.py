@@ -7,11 +7,12 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, Upl
 from fastapi.sse import EventSourceResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from app.core import jobs, revise, storage
+from app.core import brand_kits, jobs, revise, storage
+from app.core.brand_kits import BrandKitError, BrandKitFields
 from app.core.llm import LLMError
 from app.core.usage import Usage
 from app.db.models import Job
-from app.formats.base import Artifact, Audience, DetailLevel, GenerationConfig, Objective, Tone
+from app.formats.base import Artifact, Audience, BrandKit, DetailLevel, GenerationConfig, Objective, Tone
 from app.formats.registry import ADAPTERS
 from app.formats.runner import FormatResult
 from app.ingest.base import SourceDocument
@@ -37,7 +38,7 @@ class FormatInfo(BaseModel):
 
 class JobSettings(BaseModel):
     """What a job request chooses; the job's GenerationConfig is built from it.
-    Language and brand kit are added when translation and saved kits exist."""
+    Language is added when translation exists."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -46,10 +47,18 @@ class JobSettings(BaseModel):
     detail_level: DetailLevel = "standard"
     objective: Objective = "inform"
     style: str | None = Field(default=None, max_length=300)
+    brand_kit_id: str | None = None  # a saved kit; the job keeps a copy of it
 
     def to_config(self) -> GenerationConfig:
+        kit = None
+        if self.brand_kit_id:
+            kit = brand_kits.get_kit(self.brand_kit_id)
+            if kit is None:
+                raise HTTPException(status_code=422, detail="That brand kit no longer exists.")
         style = (self.style or "").strip() or None
-        return GenerationConfig(**self.model_dump(exclude={"style"}), style=style)
+        return GenerationConfig(
+            **self.model_dump(exclude={"style", "brand_kit_id"}), style=style, brand_kit=kit
+        )
 
 
 class JobRequest(BaseModel):
@@ -353,3 +362,61 @@ async def job_events(job: Annotated[Job, Depends(_load_job)]) -> AsyncIterable[J
             if job.status in jobs.FINISHED:
                 return
         await asyncio.sleep(POLL_S)
+
+
+# --- Brand kits ---------------------------------------------------------------
+
+
+def _kit_call(call, *args):
+    try:
+        return call(*args)
+    except BrandKitError as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
+
+
+@router.get("/brand-kits", response_model=list[BrandKit])
+async def list_brand_kits() -> list[BrandKit]:
+    return brand_kits.list_kits()
+
+
+@router.post("/brand-kits", response_model=BrandKit, status_code=201)
+async def create_brand_kit(fields: BrandKitFields) -> BrandKit:
+    return brand_kits.create_kit(fields)
+
+
+@router.put("/brand-kits/{kit_id}", response_model=BrandKit)
+async def update_brand_kit(kit_id: str, fields: BrandKitFields) -> BrandKit:
+    """Changes the saved kit only; jobs already made with it keep their copy."""
+    return _kit_call(brand_kits.update_kit, kit_id, fields)
+
+
+@router.delete("/brand-kits/{kit_id}", status_code=204)
+async def delete_brand_kit(kit_id: str) -> Response:
+    _kit_call(brand_kits.delete_kit, kit_id)
+    return Response(status_code=204)
+
+
+@router.put("/brand-kits/{kit_id}/logo", response_model=BrandKit)
+async def upload_brand_kit_logo(kit_id: str, file: Annotated[UploadFile, File()]) -> BrandKit:
+    """A PNG or JPEG, checked by its content, not its name."""
+    data = await file.read(brand_kits.MAX_LOGO_BYTES + 1)
+    return await asyncio.to_thread(_kit_call, brand_kits.set_logo, kit_id, data)
+
+
+@router.delete("/brand-kits/{kit_id}/logo", response_model=BrandKit)
+async def remove_brand_kit_logo(kit_id: str) -> BrandKit:
+    return _kit_call(brand_kits.remove_logo, kit_id)
+
+
+@router.get("/brand-kits/{kit_id}/logo")
+async def brand_kit_logo(kit_id: str) -> Response:
+    """The kit's current logo, for the UI to show."""
+    kit = brand_kits.get_kit(kit_id)
+    if kit is None or kit.logo is None:
+        raise HTTPException(status_code=404, detail="This brand kit has no logo.")
+    try:
+        data = await asyncio.to_thread(storage.read, kit.logo)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail="The logo file is missing.") from e
+    media_type = "image/png" if kit.logo.endswith(".png") else "image/jpeg"
+    return Response(content=data, media_type=media_type, headers={"Cache-Control": "no-cache"})

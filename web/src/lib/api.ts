@@ -1,4 +1,6 @@
 import type {
+  BrandKit,
+  BrandKitFields,
   FormatInfo,
   FormatResult,
   Job,
@@ -10,10 +12,17 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {
+    // FastAPI's validation errors are a list; show their messages, not JSON.
     const detail =
       typeof body.detail === "string"
         ? body.detail
-        : JSON.stringify(body.detail)
+        : Array.isArray(body.detail)
+          ? body.detail
+              .map((d: { msg?: string }) =>
+                (d.msg ?? "").replace(/^Value error, /, "")
+              )
+              .join("; ")
+          : JSON.stringify(body.detail)
     throw new Error(detail || `HTTP ${res.status}`)
   }
   return body as T
@@ -165,4 +174,48 @@ export function watchJob(
     else handlers.onLost()
   }
   return () => source.close()
+}
+
+// Saved brand kits. A job keeps a copy of the kit it was made with, so
+// editing or deleting one here never changes an existing job.
+export function listBrandKits(): Promise<BrandKit[]> {
+  return request("/api/brand-kits")
+}
+
+export function saveBrandKit(
+  kitId: string | null,
+  fields: BrandKitFields
+): Promise<BrandKit> {
+  return request(kitId ? `/api/brand-kits/${kitId}` : "/api/brand-kits", {
+    method: kitId ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  })
+}
+
+export async function deleteBrandKit(kitId: string): Promise<void> {
+  const res = await fetch(`/api/brand-kits/${kitId}`, { method: "DELETE" })
+  if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`)
+}
+
+// A PNG or JPEG; the server checks the content, not the name.
+export function uploadBrandKitLogo(
+  kitId: string,
+  file: File
+): Promise<BrandKit> {
+  const body = new FormData()
+  body.append("file", file)
+  return request(`/api/brand-kits/${kitId}/logo`, { method: "PUT", body })
+}
+
+export function removeBrandKitLogo(kitId: string): Promise<BrandKit> {
+  return request(`/api/brand-kits/${kitId}/logo`, { method: "DELETE" })
+}
+
+// The logo's storage key changes whenever the image does, so it doubles as
+// a cache buster.
+export function brandKitLogoUrl(kit: BrandKit): string | null {
+  return kit.logo
+    ? `/api/brand-kits/${kit.kit_id}/logo?v=${encodeURIComponent(kit.logo)}`
+    : null
 }

@@ -4,13 +4,18 @@
 <meta charset="utf-8">
 <title>{{ title }}</title>
 <style>
-  /* House style for every PDF. Fixed until S8's brand kit replaces these values. */
+  /* Every value below comes from the Theme (render/theme.py): the house style,
+     or a brand kit's. Colours and the font name are validated when a kit is
+     saved, so they are safe to write into CSS unescaped (|safe: autoescaping
+     would turn the font's quotes into entities, which CSS does not read).
+     Free text such as the organisation's name never goes into CSS; it
+     reaches the header through string-set, like the kind and the note. */
   :root {
-    --ink: #1a1f2b;
-    --muted: #5b6475;
-    --accent: #0b5cad;
-    --accent-soft: #eef4fb;
-    --rule: #d8dde6;
+    --ink: {{ theme.ink }};
+    --muted: {{ theme.muted }};
+    --accent: {{ theme.accent }};
+    --accent-soft: {{ theme.accent_soft }};
+    --rule: {{ theme.rule }};
   }
 
   /* Margin boxes do not inherit from :root, so their colours are repeated here. */
@@ -19,34 +24,34 @@
     margin: 24mm 20mm 22mm;
     @top-left {
       content: string(kind);
-      font: 600 7.5pt "Helvetica Neue", Arial, "DejaVu Sans", sans-serif;
+      font: 600 7.5pt {{ theme.css_fonts|safe }};
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: #0b5cad;
+      color: {{ theme.accent }};
       vertical-align: bottom;
       padding-bottom: 3mm;
     }
     @top-right {
-      content: "Content Transform";
-      font: 7.5pt "Helvetica Neue", Arial, "DejaVu Sans", sans-serif;
-      color: #5b6475;
+      content: string(org);
+      font: 7.5pt {{ theme.css_fonts|safe }};
+      color: {{ theme.muted }};
       vertical-align: bottom;
       padding-bottom: 3mm;
     }
     @bottom-left {
       content: string(note);
-      font: 7.5pt "Helvetica Neue", Arial, "DejaVu Sans", sans-serif;
-      color: #5b6475;
+      font: 7.5pt {{ theme.css_fonts|safe }};
+      color: {{ theme.muted }};
     }
     @bottom-right {
       content: "Page " counter(page) " of " counter(pages);
-      font: 7.5pt "Helvetica Neue", Arial, "DejaVu Sans", sans-serif;
-      color: #5b6475;
+      font: 7.5pt {{ theme.css_fonts|safe }};
+      color: {{ theme.muted }};
     }
   }
 
   html {
-    font-family: "Helvetica Neue", Arial, "DejaVu Sans", sans-serif;
+    font-family: {{ theme.css_fonts|safe }};
     font-size: 10.5pt;
     line-height: 1.5;
     color: var(--ink);
@@ -56,6 +61,10 @@
   /* Feed the running header and footer. Not display: none, which would never set the string. */
   .kind { string-set: kind content(); height: 0; overflow: hidden; }
   .note { string-set: note content(); height: 0; overflow: hidden; }
+  .org { string-set: org content(); height: 0; overflow: hidden; }
+
+  /* A brand kit's logo, top right of the first page. */
+  .logo { float: right; max-height: 14mm; max-width: 45mm; margin: 0 0 4mm 8mm; }
 
   h1 {
     font-size: 21pt;
@@ -146,6 +155,8 @@
 <body>
 <div class="kind">{% block kind %}{% endblock %}</div>
 <div class="note">{% block note %}{% endblock %}</div>
+<div class="org">{{ theme.org_name }}</div>
+{% if theme.logo_uri %}<img class="logo" src="{{ theme.logo_uri }}" alt="{{ theme.org_name }}">{% endif %}
 {% block content %}{% endblock %}
 </body>
 </html>

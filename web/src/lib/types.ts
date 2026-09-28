@@ -148,6 +148,17 @@ export interface JobSettings {
   detail_level: DetailLevel
   objective: Objective
   style: string | null
+  brand_kit_id: string | null // a saved kit; the job keeps a copy
+}
+
+// What a reviewer edits on a saved kit (BrandKitFields in
+// app/core/brand_kits.py). The logo is uploaded on its own.
+export interface BrandKitFields {
+  org_name: string
+  primary: string
+  ink: string
+  font: string | null
+  banned_phrases: string[]
 }
 
 export interface FormatInfo {

@@ -17,6 +17,7 @@ import {
   createJobFromFile,
   createJobFromUrl,
   isFinished,
+  listBrandKits,
   listFormats,
   listJobs,
   listSourceTypes,
@@ -25,6 +26,7 @@ import {
 import { resolveSelection, type SelectionKey } from "@/lib/grounding"
 import { DEFAULT_SETTINGS, settingsFromConfig } from "@/lib/settings"
 import type {
+  BrandKit,
   FormatInfo,
   FormatResult,
   Job,
@@ -64,6 +66,7 @@ export function App() {
   const [formats, setFormats] = useState<FormatInfo[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [settings, setSettings] = useState<JobSettings>(DEFAULT_SETTINGS)
+  const [kits, setKits] = useState<BrandKit[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [jobId, setJobId] = useState<string | null>(jobIdFromUrl)
@@ -97,6 +100,10 @@ export function App() {
     // Without the list, uploading is hidden and pasting still works.
     listSourceTypes()
       .then(setSourceTypes)
+      .catch(() => {})
+    // Without the list, jobs still run in the house style.
+    listBrandKits()
+      .then(setKits)
       .catch(() => {})
     refreshHistory()
   }, [refreshHistory])
@@ -141,6 +148,13 @@ export function App() {
   const current = job && job.id === jobId ? job : null
   const busy = submitting || (current !== null && !isFinished(current))
   const traced = current && resolveSelection(selection, current.outputs)
+  // An opened job may name a kit deleted since; the next job is made
+  // without it rather than refused.
+  const effectiveSettings: JobSettings = kits.some(
+    (k) => k.kit_id === settings.brand_kit_id
+  )
+    ? settings
+    : { ...settings, brand_kit_id: null }
 
   // A revised passage comes back as its format's whole new result. The job
   // row already holds it; a finished job has no event stream to send it.
@@ -188,10 +202,10 @@ export function App() {
       // Keep the server's order, which is the order the formats are listed in.
       const names = formats.map((f) => f.name).filter((n) => selected.has(n))
       const created = file
-        ? await createJobFromFile(file, names, settings)
+        ? await createJobFromFile(file, names, effectiveSettings)
         : link
-          ? await createJobFromUrl(link, names, settings)
-          : await createJob(text, names, settings)
+          ? await createJobFromUrl(link, names, effectiveSettings)
+          : await createJob(text, names, effectiveSettings)
       setJob(created)
       openJob(created.id, false)
       refreshHistory()
@@ -300,7 +314,12 @@ export function App() {
         </div>
       </fieldset>
 
-      <JobSettingsFields value={settings} onChange={setSettings} />
+      <JobSettingsFields
+        value={effectiveSettings}
+        onChange={setSettings}
+        kits={kits}
+        onKitsChange={setKits}
+      />
 
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">

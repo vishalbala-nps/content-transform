@@ -6,7 +6,8 @@ changes emphasis and wording, never the rules: every format still uses only
 the brief and attributes claims. Length comes from `detail_level`, but each
 format turns that into its own targets (tweets, slides, words), so it is not
 here. `language` is not here either: prompts are written in English and the
-payload is translated afterwards.
+payload is translated afterwards. A brand kit's banned phrases are, and the
+runner also warns about any that get through (formats/brand.py).
 """
 
 from app.formats.base import GenerationConfig
@@ -48,6 +49,9 @@ def config_for_prompt(config: GenerationConfig) -> str:
     ]
     if config.style and config.style.strip():
         lines.append(f"- Style requested by the user: {config.style.strip()}")
+    banned = [p.strip() for p in (config.brand_kit.banned_phrases if config.brand_kit else []) if p.strip()]
+    if banned:
+        lines.append("- Never use these words or phrases: " + ", ".join(f'"{p}"' for p in banned))
     lines += [
         "These settings change emphasis, word choice and voice only. They never override the",
         "rules above: use only what the brief states, attribute claims as described, and keep",

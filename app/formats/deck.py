@@ -12,6 +12,7 @@ schema: an Ollama model never sees the schema's descriptions.
 from pydantic import BaseModel, Field
 
 from app.formats.base import Artifact, GenerationConfig
+from app.formats.brand import theme_for
 from app.formats.brief_view import brief_for_prompt
 from app.formats.config_view import config_for_prompt
 from app.render.pptx import DeckBuilder
@@ -143,7 +144,7 @@ class DeckAdapter:
         )
 
     def render(self, payload: Deck, config: GenerationConfig, brief: ContentBrief) -> list[Artifact]:
-        deck = DeckBuilder(title=payload.title, footer=payload.title)
+        deck = DeckBuilder(title=payload.title, footer=payload.title, theme=theme_for(config))
         deck.title_slide(payload.title, payload.subtitle, payload.opening_notes)
         if payload.key_numbers:
             numbers = [(n.value, n.label) for n in payload.key_numbers]

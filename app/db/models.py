@@ -46,6 +46,19 @@ class Job(Base):
     error: Mapped[str | None] = mapped_column(Text)  # why the job failed; format errors are in outputs
 
 
+class BrandKitRecord(Base):
+    """A saved brand kit. Jobs never point at one: each job keeps its own copy
+    (GenerationConfig.brand_kit), so editing or deleting a kit leaves old jobs
+    as they were."""
+
+    __tablename__ = "brand_kits"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    kit: Mapped[dict] = mapped_column(JSON)  # BrandKit without kit_id: the fields and the logo's storage key
+
+
 @lru_cache
 def engine() -> Engine:
     url = get_settings().database_url

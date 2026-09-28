@@ -1,3 +1,4 @@
+import { BrandKitManager } from "@/components/brand-kit-manager"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -7,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type { JobSettings } from "@/lib/types"
+import type { BrandKit, JobSettings } from "@/lib/types"
 
 // The choices a job applies to every format it generates. Values mirror
 // GenerationConfig in app/formats/base.py; the labels are only for the UI.
@@ -57,12 +58,19 @@ const CHOICES: { key: Choice; label: string; options: [string, string][] }[] = [
   },
 ]
 
+// Radix Select items cannot have an empty value.
+const NO_KIT = "none"
+
 export function JobSettingsFields({
   value,
   onChange,
+  kits,
+  onKitsChange,
 }: {
   value: JobSettings
   onChange: (settings: JobSettings) => void
+  kits: BrandKit[]
+  onKitsChange: (kits: BrandKit[]) => void
 }) {
   return (
     <fieldset className="space-y-2">
@@ -107,6 +115,43 @@ export function JobSettingsFields({
             onChange={(e) => onChange({ ...value, style: e.target.value })}
             placeholder="e.g. British spelling, avoid jargon"
           />
+        </div>
+        <div className="space-y-1">
+          <Label
+            htmlFor="setting-brand-kit"
+            className="text-xs font-normal text-muted-foreground"
+          >
+            Brand kit
+          </Label>
+          <div className="flex items-center gap-2">
+            <Select
+              value={value.brand_kit_id ?? NO_KIT}
+              onValueChange={(v) =>
+                onChange({ ...value, brand_kit_id: v === NO_KIT ? null : v })
+              }
+            >
+              <SelectTrigger id="setting-brand-kit" className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_KIT}>None (house style)</SelectItem>
+                {kits.map((k) => (
+                  <SelectItem key={k.kit_id} value={k.kit_id}>
+                    {k.org_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <BrandKitManager
+              kits={kits}
+              onChange={(next, chosen) => {
+                onKitsChange(next)
+                // A new kit is chosen for the next job. A deleted one needs
+                // nothing here: an unknown id already means no kit (App).
+                if (chosen) onChange({ ...value, brand_kit_id: chosen })
+              }}
+            />
+          </div>
         </div>
       </div>
     </fieldset>

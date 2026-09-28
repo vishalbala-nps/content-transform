@@ -164,9 +164,13 @@ to every format in a job.
   allows the widest range, since `schema` is one class per format.
 - `language` (S8d): prompts are written in English and the payload is
   translated afterwards. Numbers stay in Western digits in every language.
-- `brand_kit` (S8c) is copied from a saved kit when the job is created, so
-  editing the kit never changes an old job. Renderers receive a `Theme`,
-  not the kit.
+- `brand_kit` is copied from a saved kit (`core/brand_kits.py`, table
+  `brand_kits`) when the job is created, so editing or deleting the kit
+  never changes an old job. Renderers receive a `Theme` (`render/theme.py`)
+  built from it by `formats/brand.py`, never the kit; no kit is the house
+  style. The runner loads the logo's bytes before `render()`. A kit's
+  banned phrases go into the shared prompt section and are warned on after
+  rendering, for every format.
 
 Translation runs **after** schema filling so character limits and layout
 constraints still hold.
@@ -175,14 +179,16 @@ constraints still hold.
 
 ```
 app/
-  core/          config.py, llm.py, usage.py, jobs.py, storage.py, revise.py
+  core/          config.py, llm.py, usage.py, jobs.py, storage.py, revise.py,
+                 brand_kits.py
   ingest/        base.py, common.py, registry.py, url.py, text.py, docx.py,
                  pdf.py, html.py, image.py
   understand/    brief.py, schemas.py, prompts/
   formats/       base.py, registry.py, runner.py, brief_view.py, config_view.py,
+                 brand.py,
                  linkedin.py, x_thread.py, advisory.py,
                  infographic.py, exec_summary.py, deck.py
-  render/        pdf.py, pptx.py, svg.py, templates/
+  render/        theme.py, pdf.py, pptx.py, svg.py, templates/
   verify/        grounding.py, pii.py
   api/           routes.py, sse.py
   db/            models.py, migrations/

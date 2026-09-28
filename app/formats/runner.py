@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from app.core.llm import LLMError, complete_json
 from app.core.usage import Usage, metered
 from app.formats.base import Artifact, GenerationConfig, OutputAdapter
+from app.formats.brand import banned_phrase_warnings, with_logo
 from app.formats.brief_view import brief_for_render
 from app.formats.registry import ADAPTERS
 from app.understand.schemas import ContentBrief
@@ -39,10 +40,13 @@ async def render_format(
     adapter: OutputAdapter, payload: BaseModel, config: GenerationConfig, brief: ContentBrief
 ) -> tuple[list[Artifact], list[str]]:
     """Artifacts and warnings from a filled payload. No model call: also used after a passage is revised."""
-    # Off the event loop: a PDF or deck takes long enough to stall progress streams.
+    # Off the event loop: reading the logo, and a PDF or deck takes long
+    # enough to stall progress streams.
+    config, logo_warnings = await asyncio.to_thread(with_logo, config)
     render_brief = brief_for_render(brief, public=adapter.public)
     artifacts = await asyncio.to_thread(adapter.render, payload, config, render_brief)
-    return artifacts, adapter.check(payload, artifacts, config)
+    warnings = adapter.check(payload, artifacts, config) + banned_phrase_warnings(payload, config)
+    return artifacts, warnings + logo_warnings
 
 
 async def run_format(adapter: OutputAdapter, brief: ContentBrief, config: GenerationConfig) -> FormatResult:

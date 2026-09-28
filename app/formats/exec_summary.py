@@ -8,6 +8,7 @@ a one-page PDF to circulate.
 from pydantic import BaseModel, Field
 
 from app.formats.base import Artifact, GenerationConfig
+from app.formats.brand import theme_for
 from app.formats.brief_view import brief_for_prompt
 from app.formats.config_view import config_for_prompt
 from app.render.pdf import render_pdf
@@ -86,7 +87,9 @@ class ExecSummaryAdapter:
             actions = "\n".join(f"{i}. {a}" for i, a in enumerate(payload.actions, start=1))
             sections.append("## Actions\n\n" + actions)
         sections.append(f"*Source: {payload.source_note}*")
-        pdf = render_pdf("exec_summary.html", s=payload, title=payload.title, lang=config.language)
+        pdf = render_pdf(
+            "exec_summary.html", theme_for(config), s=payload, title=payload.title, lang=config.language
+        )
         return [
             Artifact(filename="exec_summary.md", media_type="text/markdown", text="\n\n".join(sections)),
             Artifact(filename="exec_summary.pdf", media_type="application/pdf", data=pdf),

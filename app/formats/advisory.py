@@ -16,6 +16,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.formats.base import Artifact, GenerationConfig
+from app.formats.brand import theme_for
 from app.formats.brief_view import brief_for_prompt
 from app.formats.config_view import config_for_prompt
 from app.render.pdf import render_pdf
@@ -181,6 +182,7 @@ class AdvisoryAdapter:
         source = ", ".join(x for x in (SOURCE_KINDS[brief.source.kind], origin, published) if x)
         pdf = render_pdf(
             "advisory.html",
+            theme_for(config),
             a=payload,
             brief=brief,
             kind=kind,

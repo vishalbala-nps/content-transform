@@ -1,13 +1,16 @@
 """Jinja HTML templates to PDF bytes with WeasyPrint. No model calls.
 
-Templates are in render/templates/ and extend base.html, which holds the house
-style (S8's brand kit will parameterise it). What a template shows comes from
-a validated payload, which is model output, so Jinja autoescapes everything.
+Templates are in render/templates/ and extend base.html, which takes its
+colours, font, organisation name and logo from a Theme (render/theme.py). What
+a template shows comes from a validated payload, which is model output, so
+Jinja autoescapes everything.
 """
 
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
+
+from app.render.theme import Theme
 
 TEMPLATES = Path(__file__).parent / "templates"
 
@@ -20,7 +23,7 @@ _env = Environment(
 )
 
 
-def render_pdf(template: str, **context) -> bytes:
+def render_pdf(template: str, theme: Theme, **context) -> bytes:
     # Imported here, not at the top: WeasyPrint needs Pango, and without it
     # only the PDF formats should fail, not the server or the other formats.
     try:
@@ -32,7 +35,8 @@ def render_pdf(template: str, **context) -> bytes:
             "DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib in .env (see README)."
         ) from e
 
-    html = _env.get_template(template).render(**context)
-    # Templates load nothing external. Allowing no protocols at all means text
-    # in a payload can never make the renderer read a file or the network.
-    return HTML(string=html, url_fetcher=URLFetcher(allowed_protocols=())).write_pdf()
+    html = _env.get_template(template).render(theme=theme, **context)
+    # Templates load nothing external: the only image, a brand kit's logo, is
+    # inlined as a data: URI. Allowing that scheme alone means text in a
+    # payload can never make the renderer read a file or the network.
+    return HTML(string=html, url_fetcher=URLFetcher(allowed_protocols=("data",))).write_pdf()

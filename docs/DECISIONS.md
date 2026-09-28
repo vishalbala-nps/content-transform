@@ -805,3 +805,50 @@ cache is still read for everything else, and the rewrite is still stored.
   $0.0014 to check), a Regenerate (2 calls under revisions, generation
   untouched), a fully cached job ($0, calls counted as cached), the column
   step on a copy of the dev database, and the meter in headless Chrome.
+
+**2026-09-28 — S8c: brand kits through a Theme; a job keeps its copy.**
+- Saved kits live in a new `brand_kits` table (`create_all` makes it; no
+  column step needed). Routes: list, create, edit, delete, upload and
+  remove a logo, fetch the logo for the UI. A job's config holds a copy of
+  its kit, so editing or deleting a kit never changes an old job, and a
+  deck edited after its kit was deleted still re-renders with the kit it
+  was made with.
+- Renderers take a `Theme` (`render/theme.py`), never the kit, so
+  `render/` still knows nothing about formats. `Theme()` is the house
+  style; `Theme.branded()` derives the pale tint, muted text, hairlines
+  and on-accent text from the kit's two colours with the proportions the
+  house palette has. Without a kit, every PDF page and the deck XML were
+  checked byte-identical to before the change.
+- Kits are validated when saved, so rendering never has to guess:
+  - Main colour at least 3:1 against white (WCAG large text: headings
+    and white text on it), text colour at least 4.5:1. Too light is
+    refused with the contrast figure, not silently darkened.
+  - Font names: letters, digits, spaces and hyphens only, since the name
+    is written into CSS. The organisation name is free text and never
+    goes into CSS; it reaches the PDF header through `string-set` from an
+    escaped element.
+  - Logos: PNG or JPEG by content, readable by python-pptx, up to 1 MB.
+    Stored as `brand/logos/<sha256>.<ext>` and never deleted, since a
+    job's copy of a kit may name a logo the kit has since replaced.
+- The PDF's URL fetcher now allows `data:` and nothing else. The logo is
+  inlined as a data URI; `file:` and `https:` stay blocked (checked).
+  Model text is escaped and cannot add an image.
+- Logo placement: first page top right in PDFs; decks on a white panel on
+  the title slide (a logo is usually drawn for a light background) and
+  small in the top right of every other slide. Severity badges keep their
+  own colours: a brand must not recolour "critical".
+- Banned phrases go into the shared prompt section ("Never use these
+  words or phrases") and the runner warns on any passage that still uses
+  one, whole words, any case, for every format and after edits too. Eval
+  `20260928-204753` banned "severe", "immediately" and "highlight": 20
+  passages used them at the default config, 0 with the kit, and no
+  warning fired. Format warnings were 7 against 3 (deck bullets one or
+  two words over, one long LinkedIn post) and flagged passages 2 against
+  6; every format was regenerated, so one run cannot tell those from
+  variation. Without a kit the prompts are unchanged (the default run was
+  all cache hits, scores unmoved).
+- UI: a Brand kit menu in the settings (None is the house style) and a
+  "Manage…" dialog, the shadcn `dialog` component (on `radix-ui`, already
+  installed). A new kit is chosen for the next job; an opened job whose
+  kit was deleted since starts the next job without one. FastAPI
+  validation errors now show as their messages, not JSON.
