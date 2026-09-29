@@ -203,10 +203,30 @@ cache on): 28/28 facts, 0 invented numbers, 0 IOC leaks, 2 format
 warnings, 5 of 382 passages flagged.
 
 ## S9 — UI polish  ← current
-UI changes and visual refinement, deferred from S8. The user is bringing
-their own suggestions first; nothing is built until they are in.
+UI changes and visual refinement, deferred from S8, from the user's
+suggestions. The product is named Spectra. The single page becomes a title
+bar, a sidebar (New job, Brand kits, the jobs) and one view beside it.
 
-**Done when:** to be set from the user's suggestions.
+- **S9a — app shell.** Done. Title bar with a light/dark toggle, a sidebar
+  that collapses to icons (a sheet on a phone) and one view per URL: `/`,
+  `?job=<id>`, `?view=kits`. The New view keeps the old form and the job
+  view the old results for now. Opening a job no longer fills the form;
+  **New job from this** does. Generate is no longer blocked by a running
+  job, which queues. Checked in headless Chrome at desktop and phone width.
+- **S9b — New view.** Source as tabs (paste, upload, link); formats as
+  tiles saying what files each makes (the API sends this); settings
+  grouped; "New kit…" in the brand kit menu.
+- **S9c — job view.** Progress and usage until the brief exists, then the
+  source and brief beside the outputs, one format at a time, chosen from a
+  selector that shows each format's progress, flags and warnings; Copy and
+  downloads in the format's header; a summary of the job's settings.
+- **S9d — Brand kits page.** Kits listed with swatches, logo, font and
+  banned phrases; add opens the editor dialog, a row opens it to edit, and
+  a row's menu deletes after a confirmation.
+
+**Done when:** a job goes from New to its review in the new layout, past
+jobs and brand kits are reached from the sidebar, and every view works at
+desktop and phone width.
 
 ## Later — noted 2026-09-29, not scheduled
 In no particular order. Each is picked up as its own slice or part of one.

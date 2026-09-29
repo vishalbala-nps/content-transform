@@ -36,14 +36,16 @@ uv run --env-file .env uvicorn app.main:app --timeout-graceful-shutdown 3
 Open http://127.0.0.1:8000. FastAPI only serves the UI if `web/dist` existed
 when it started, so restart it after the first build.
 
-Paste text, tick the formats you want and click **Generate**. The content
-brief appears beside the outputs; hover a block chip (`b3`) to see the source
-paragraph it cites. Formats are generated in parallel, at most
-`LLM_CONCURRENCY` (default 3) model calls at a time.
+Choose **New job** in the sidebar, paste text, tick the formats you want and
+click **Generate**. The content brief appears beside the outputs; hover a
+block chip (`b3`) to see the source paragraph it cites. Formats are
+generated in parallel, at most `LLM_CONCURRENCY` (default 3) model calls at
+a time.
 
 Each run is a job in `storage/app.db` (`DATABASE_URL` to change it). The page
 URL carries the job id, so you can close the tab mid-job and come back to it;
-**Recent jobs** lists earlier ones. A job cut off by a server restart resumes
+the sidebar lists earlier ones, and **New job from this** starts a new job
+from one's input and settings. A job cut off by a server restart resumes
 from its last finished step when the server starts again.
 
 `--timeout-graceful-shutdown 3` matters: without it, stopping or reloading the

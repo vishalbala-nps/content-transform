@@ -951,3 +951,45 @@ once per job, values never; Noto fonts are bundled.
   the pre-cached flagship demo, Docker Compose, the open eval items,
   translation follow-ups (labels.json review, a hashtag rule), the PII scan,
   and images and scanned PDFs.
+
+**2026-09-29 — S9 plan: Spectra, a sidebar shell, stages read from the job.**
+Decided with the user from their suggestions:
+- The product is named Spectra in the UI (title bar, browser tab). The
+  house style's name in PDF headers and deck footers (`HOUSE_NAME`,
+  `render/theme.py`) is not changed by this.
+- One page becomes a title bar, a sidebar (New job, Brand kits, every
+  recent job) and one view beside it. The view is in the URL as a query
+  string (`/`, `?job=<id>`, `?view=kits`), not a path: no router
+  dependency, and FastAPI serves the page from `/` without a fallback
+  route. Sidebar entries are real links, so they open in a new tab too.
+- A job's stage (input, generating, review) is read from its status and
+  whether its brief exists, never stored in the page, so a refresh or a
+  running job opened from the sidebar lands in the right place. Review
+  starts once the brief exists, not once every format is done: the format
+  selector shows each format's progress.
+- Opening a job no longer fills the form with its input. "New job from
+  this" does, on purpose, since in the new layout the form is not on the
+  job's page. A file or link job comes back as the text it was read into.
+- Generate is no longer disabled while a job runs; the worker already runs
+  jobs one at a time, so the new one queues.
+- The brand kits get their own page; the brand kit menu in a new job keeps
+  a "New kit…" entry so making a kit does not mean leaving the form.
+- Each format declares a short description of the files it makes, sent by
+  `GET /api/formats`, for the format tiles (S9b). One more field on the
+  adapter, so still one file per format.
+
+**2026-09-29 — S9a: shell built on the shadcn sidebar.**
+- `shadcn add sidebar` (with `sheet`, `separator`, `skeleton` and a
+  `use-mobile` hook), all on `radix-ui`, already installed. Laid out as
+  shadcn's "sidebar with a sticky site header" block: the sidebar sits
+  below the title bar and collapses to an icon rail, where the job list
+  hides. The generated `use-mobile` set state inside an effect, which the
+  React lint rejects; it now reads the media query with
+  `useSyncExternalStore`.
+- The new job's draft lives in App, so a visit to another view keeps it.
+  Submitting clears the source and keeps formats and settings.
+- The job view owns its event stream and passage selection and is mounted
+  once per job id, so opening another job starts clean.
+- The sidebar's job list is re-read every 2 s while any job in it is
+  queued or running, so a queued job the user is not watching still shows
+  when it starts and finishes. Nothing is polled when all are finished.

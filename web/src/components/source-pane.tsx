@@ -80,7 +80,7 @@ export function SourcePane({
     : `${source.blocks.length} blocks · select a passage to trace it`
 
   return (
-    <Card className="lg:sticky lg:top-4">
+    <Card className="lg:sticky lg:top-[calc(var(--header-height)+1rem)]">
       <Tabs value={tab} onValueChange={setTab} className="gap-0">
         <CardHeader className="gap-2">
           <TabsList>
@@ -91,7 +91,7 @@ export function SourcePane({
         </CardHeader>
         <CardContent
           ref={scroller}
-          className="relative mt-4 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto"
+          className="relative mt-4 lg:max-h-[calc(100svh-var(--header-height)-9rem)] lg:overflow-y-auto"
         >
           <TabsContent value="source">
             <SourceBlocks source={source} highlight={blocks} />
