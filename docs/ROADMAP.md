@@ -5,7 +5,7 @@ browser. No slice is "build the persistence layer".
 
 Mark the current slice here so a fresh session knows where it is.
 
-**Current slice: S6** (S8 done; reordered 2026-09-27 and 2026-09-28, see DECISIONS)
+**Current slice: S9 (UI polish).** S8 is done; S6 and video are deferred (2026-09-29, see DECISIONS).
 
 ---
 
@@ -107,10 +107,11 @@ Done. Decks download from the browser and open in PowerPoint; the executive
 summary and the advisory download as PDFs. Open for evals: invented numbers
 in speaker notes, and press-release claims stated rather than attributed.
 
-## S6 — Infographic  ← after S8
-Deferred, not dropped: the problem statement asks for infographic content.
-It must land before any submission or demo, and the flagship demo cache is
-built after it.
+## S6 — Infographic  ← deferred, with video
+Deferred again on 2026-09-29 for time: it will be done later, together with
+video output. Not dropped: the problem statement asks for infographic
+content, and the flagship demo cache captures every format, so a demo built
+before S6 would be rebuilt after it.
 
 Write three or four SVG templates **by hand first** (stat grid, timeline,
 comparison, process flow), then write the schema and prompt to fill them.
@@ -201,6 +202,32 @@ config here. Baseline run `20260928-191922` (Gemini `gemini-3.5-flash-lite`,
 cache on): 28/28 facts, 0 invented numbers, 0 IOC leaks, 2 format
 warnings, 5 of 382 passages flagged.
 
+## S9 — UI polish  ← current
+UI changes and visual refinement, deferred from S8. The user is bringing
+their own suggestions first; nothing is built until they are in.
+
+**Done when:** to be set from the user's suggestions.
+
+## Later — noted 2026-09-29, not scheduled
+In no particular order. Each is picked up as its own slice or part of one.
+
+- **S6 infographic, together with video output** (see DECISIONS).
+- **Ollama check of S8.** Settings, brand kits and above all translation were
+  tested on Gemini only; a small local model may translate these languages
+  poorly. The Ollama fallback is the offline plan for a demo.
+- **Pre-cached flagship demo**, rebuilt once S6 lands (see Demo safety).
+- **Docker Compose.** Named in the stack, not built yet. The image needs
+  Pango for WeasyPrint; the Noto fonts are bundled already.
+- **Open eval items:** grounding misses lost qualifiers ("at least 37" ->
+  "37"); questions to the reader judged partly unsupported instead of
+  not_factual; Tamil and Telugu translations running past character limits
+  (a smaller English budget for languages that expand); brief exec
+  summaries of sources with many actions past 200 words.
+- **Translation follow-ups:** a native speaker to read `render/labels.json`;
+  one rule for hashtags in translated posts (translated or kept in English).
+- **PII scan** of public formats (ARCHITECTURE, `verify/pii.py`, not built).
+- **Images and scanned PDFs** read by a vision model (deferred since S4).
+
 ---
 
 ## Eval harness — land at S2, not at the end
@@ -213,7 +240,8 @@ LinkedIn posts by hand with no idea whether last night's change helped.
 
 ## Demo safety
 
-- Pre-cache one flagship document's complete output set as static files,
-  after S6, so the set includes the infographic.
+- Pre-cache one flagship document's complete output set as static files.
+  Planned after S6 so the set includes the infographic; with S6 deferred, a
+  cache built sooner is rebuilt once S6 lands.
 - Keep the Ollama fallback working; campus wifi fails.
 - Never demo with the dev LLM cache enabled.

@@ -930,3 +930,24 @@ once per job, values never; Noto fonts are bundled.
   score moving, and English PDFs and deck XML are byte-identical. The one
   English change is deliberate: the advisory markdown's indicator types
   read "IP", "Domain" instead of "ip", "domain", as the PDF does.
+
+**2026-09-29 — S6 (infographic) deferred again, together with video.**
+- The user's call, for time: S6 is not done next. It will be done later,
+  together with video output. Neither is dropped.
+- Video: this records the intent to add it, which reverses the "Video output
+  excluded" entry. How it is built, and the week of work and demo-day risk
+  that entry weighed, are decided when it is scheduled.
+- The "S6 must land before any submission or demo" line in the 2026-09-28
+  entry no longer holds as written. The flagship demo cache was to be built
+  after S6 so it captures every format; built sooner, it is rebuilt once S6
+  lands.
+- The next slice is not chosen yet.
+
+**2026-09-29 — Next slice is S9, UI polish; everything else noted for later.**
+- The user chose UI polish as the only work for now. It is S9. The user will
+  give their own suggestions first; nothing is built until then.
+- Everything else raised as a candidate is listed under "Later" in ROADMAP,
+  unscheduled: S6 with video, an Ollama check of S8 (translation above all),
+  the pre-cached flagship demo, Docker Compose, the open eval items,
+  translation follow-ups (labels.json review, a hashtag rule), the PII scan,
+  and images and scanned PDFs.
