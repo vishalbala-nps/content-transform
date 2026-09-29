@@ -13,54 +13,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { upsertKit } from "@/lib/kits"
-import { LANGUAGES } from "@/lib/settings"
+import { CHOICES, LANGUAGES, type Choice } from "@/lib/settings"
 import type { BrandKit, JobSettings, Language } from "@/lib/types"
 
 // The choices a job applies to every format it generates, in three groups:
 // who reads it, what comes out, and how it looks. Values mirror
 // GenerationConfig in app/formats/base.py; the labels are only for the UI.
-
-type Choice = "audience" | "tone" | "detail_level" | "objective"
-
-const CHOICES: Record<Choice, { label: string; options: [string, string][] }> =
-  {
-    audience: {
-      label: "Audience",
-      options: [
-        ["general_public", "General public"],
-        ["executive", "Executives"],
-        ["technical", "Technical"],
-        ["media", "Media"],
-      ],
-    },
-    objective: {
-      label: "Objective",
-      options: [
-        ["inform", "Inform"],
-        ["warn", "Warn"],
-        ["persuade", "Persuade"],
-        ["instruct", "Instruct"],
-        ["announce", "Announce"],
-      ],
-    },
-    tone: {
-      label: "Tone",
-      options: [
-        ["neutral", "Neutral"],
-        ["formal", "Formal"],
-        ["conversational", "Conversational"],
-        ["urgent", "Urgent"],
-      ],
-    },
-    detail_level: {
-      label: "Detail",
-      options: [
-        ["brief", "Brief"],
-        ["standard", "Standard"],
-        ["detailed", "Detailed"],
-      ],
-    },
-  }
 
 // Radix Select items cannot have an empty value.
 const NO_KIT = "none"

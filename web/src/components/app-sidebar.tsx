@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react"
 import {
   CircleCheck,
   CircleDashed,
@@ -20,6 +19,8 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { useNow } from "@/hooks/use-now"
+import { ago, fullTime } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import { sameView, type View } from "@/lib/view"
 import type { JobStatus, JobSummary } from "@/lib/types"
@@ -32,35 +33,6 @@ const STATUS_ICONS: Record<JobStatus, typeof CircleCheck> = {
   running: LoaderCircle,
   done: CircleCheck,
   failed: CircleX,
-}
-
-const TIME = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-})
-
-const RELATIVE = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" })
-
-function ago(iso: string, now: number): string {
-  const seconds = (new Date(iso).getTime() - now) / 1000
-  const minutes = seconds / 60
-  if (minutes > -1) return "just now"
-  if (minutes > -60) return RELATIVE.format(Math.round(minutes), "minute")
-  const hours = minutes / 60
-  if (hours > -24) return RELATIVE.format(Math.round(hours), "hour")
-  const days = hours / 24
-  if (days > -7) return RELATIVE.format(Math.round(days), "day")
-  return TIME.format(new Date(iso))
-}
-
-// Re-renders every minute so "5 minutes ago" keeps up.
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 60_000)
-    return () => clearInterval(timer)
-  }, [])
-  return now
 }
 
 function Item({
@@ -171,7 +143,7 @@ export function AppSidebar({
                               {j.formats.length === 1 ? "" : "s"} ·{" "}
                               <time
                                 dateTime={j.created_at}
-                                title={TIME.format(new Date(j.created_at))}
+                                title={fullTime(j.created_at)}
                               >
                                 {ago(j.created_at, now)}
                               </time>

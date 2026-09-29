@@ -17,12 +17,39 @@ const ICONS: Record<Step["status"], typeof CircleCheck> = {
   skipped: CircleMinus,
 }
 
-// One row of steps: the brief, then each format. Pure view of the job's steps.
-export function JobProgress({ steps }: { steps: Step[] }) {
+// A step's status as an icon: spinning while it runs, green when done.
+export function StepIcon({
+  status,
+  className,
+}: {
+  status: Step["status"]
+  className?: string
+}) {
+  const Icon = ICONS[status]
   return (
-    <ol className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm">
+    <Icon
+      className={cn(
+        "size-4 shrink-0",
+        status === "running" && "animate-spin",
+        status === "done" && "text-emerald-600 dark:text-emerald-400",
+        className
+      )}
+      aria-hidden
+    />
+  )
+}
+
+// The job's steps: the brief, then each format. Pure view of the job's steps.
+export function JobProgress({
+  steps,
+  className,
+}: {
+  steps: Step[]
+  className?: string
+}) {
+  return (
+    <ol className={cn("flex flex-wrap gap-x-5 gap-y-1.5 text-sm", className)}>
       {steps.map((step) => {
-        const Icon = ICONS[step.status]
         return (
           <li
             key={step.name}
@@ -33,15 +60,7 @@ export function JobProgress({ steps }: { steps: Step[] }) {
               step.status === "failed" && "text-destructive"
             )}
           >
-            <Icon
-              className={cn(
-                "size-4",
-                step.status === "running" && "animate-spin",
-                step.status === "done" &&
-                  "text-emerald-600 dark:text-emerald-400"
-              )}
-              aria-hidden
-            />
+            <StepIcon status={step.status} />
             {step.label}
             <span className="sr-only">: {step.status}</span>
           </li>

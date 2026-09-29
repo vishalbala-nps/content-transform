@@ -222,10 +222,15 @@ bar, a sidebar (New job, Brand kits, the jobs) and one view beside it.
   it makes. That dialog replaced the old kit manager, so the Brand kits
   page already has Add and click-to-edit. The house style's name is now
   Spectra. Checked in headless Chrome at desktop and phone width.
-- **S9c — job view.** Progress and usage until the brief exists, then the
-  source and brief beside the outputs, one format at a time, chosen from a
-  selector that shows each format's progress, flags and warnings; Copy and
-  downloads in the format's header; a summary of the job's settings.
+- **S9c — job view.** Done. A header with when the job was made, its
+  status, its settings as chips and usage. Until the brief exists, a
+  progress card; then the source and brief beside the outputs, one format
+  at a time, chosen from pills that show each format's progress, passages
+  to review and warnings, and stay on screen while a review list scrolls.
+  The format shown is in the URL (`&format=deck`). Copy and downloads are
+  in the format's header. On a phone the output comes before the source.
+  Checked in headless Chrome at desktop and phone width, including a live
+  job on Gemini and an accept and undo.
 - **S9d — Brand kits page.** Kits listed with swatches, logo, font and
   banned phrases, and a row's menu that deletes after a confirmation. (Add
   and click-to-edit landed in S9b.)

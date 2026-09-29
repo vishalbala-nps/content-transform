@@ -30,3 +30,14 @@ export function viewHref(view: View): string {
 export function sameView(a: View, b: View): boolean {
   return a.kind === b.kind && (a.kind !== "job" || a.id === (b as typeof a).id)
 }
+
+// The format shown in a job's view rides along in its URL (&format=deck),
+// replaced rather than pushed: switching formats is not a step to go back to.
+export function formatFromUrl(): string | null {
+  return new URLSearchParams(window.location.search).get("format")
+}
+
+export function replaceFormatInUrl(jobId: string, format: string): void {
+  const href = `${viewHref({ kind: "job", id: jobId })}&format=${encodeURIComponent(format)}`
+  window.history.replaceState(null, "", href)
+}

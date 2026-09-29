@@ -5,10 +5,8 @@ import { PassageList } from "@/components/passage-list"
 import { Button } from "@/components/ui/button"
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -47,7 +45,7 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-// Text artifacts only; binary ones are offered in the footer.
+// Text artifacts only; every artifact downloads from the header.
 function ArtifactBody({ artifact }: { artifact: Artifact }) {
   if (artifact.parts.length === 0) {
     return <div className="whitespace-pre-wrap">{artifact.text}</div>
@@ -216,10 +214,23 @@ export function OutputPanel({
         <CardDescription>
           {result.error ? "Failed" : artifact && describe(artifact)}
         </CardDescription>
-        {artifact && (
-          <CardAction>
-            <CopyButton text={artifact.text ?? ""} />
-          </CardAction>
+        {/* Everything to take away, before the long review list. */}
+        {result.artifacts.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {artifact && <CopyButton text={artifact.text ?? ""} />}
+            {result.artifacts.map((a) => (
+              <Button key={a.filename} variant="outline" size="sm" asChild>
+                <a
+                  href={artifactUrl(jobId, result.name, a.filename)}
+                  download={a.filename}
+                  title={a.filename}
+                >
+                  <Download />
+                  {fileKind(a)}
+                </a>
+              </Button>
+            ))}
+          </div>
         )}
       </CardHeader>
       <CardContent className="space-y-3 text-sm leading-relaxed">
@@ -245,22 +256,6 @@ export function OutputPanel({
           onRevised={onRevised}
         />
       </CardContent>
-      {result.artifacts.length > 0 && (
-        <CardFooter className="flex flex-wrap gap-2">
-          {result.artifacts.map((a) => (
-            <Button key={a.filename} variant="outline" size="sm" asChild>
-              <a
-                href={artifactUrl(jobId, result.name, a.filename)}
-                download={a.filename}
-                title={a.filename}
-              >
-                <Download />
-                {fileKind(a)}
-              </a>
-            </Button>
-          ))}
-        </CardFooter>
-      )}
     </Card>
   )
 }

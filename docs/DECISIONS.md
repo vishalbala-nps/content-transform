@@ -1014,3 +1014,23 @@ Decided with the user from their suggestions:
   for "New kit…" in the form. It replaced the dialog that listed every kit,
   so the Brand kits page opens it from Add and from each row. Saving
   closes it; a logo the server refuses keeps it open with the kit saved.
+
+**2026-09-29 — S9c: job view, one format at a time.**
+- A job's stage is read from it, as planned: no brief yet shows a progress
+  card; a brief shows the source beside the outputs, and each format's pill
+  carries its progress. A format with no result yet shows why (waiting its
+  turn, being written, or skipped because the job stopped).
+- The pills are the Radix tabs primitive with their own styling, not the
+  shadcn tabs, so they cannot be mistaken for the Review | Text tabs inside
+  a format. Each shows the count of passages still needing review and a
+  warning mark, which the one-card-per-format page used to show on every
+  card at once.
+- The format shown is in the URL (`&format=`), replaced rather than pushed,
+  so Back leaves the job instead of stepping through formats. Switching
+  clears the traced passage, so the source never highlights for a passage
+  that is not on screen.
+- The header lists the job's settings (labels shared with the form through
+  `lib/settings.ts`), since opening a job no longer fills the form with them.
+- On a phone the output comes before the source. The S7b note stands:
+  stacked, selecting a passage highlights its blocks but does not scroll to
+  them.

@@ -11,6 +11,51 @@ export const DEFAULT_SETTINGS: JobSettings = {
   brand_kit_id: null,
 }
 
+// The fixed choices, with their UI labels, in the order the form shows them.
+export type Choice = "audience" | "tone" | "detail_level" | "objective"
+
+export const CHOICES: Record<
+  Choice,
+  { label: string; options: [string, string][] }
+> = {
+  audience: {
+    label: "Audience",
+    options: [
+      ["general_public", "General public"],
+      ["executive", "Executives"],
+      ["technical", "Technical"],
+      ["media", "Media"],
+    ],
+  },
+  objective: {
+    label: "Objective",
+    options: [
+      ["inform", "Inform"],
+      ["warn", "Warn"],
+      ["persuade", "Persuade"],
+      ["instruct", "Instruct"],
+      ["announce", "Announce"],
+    ],
+  },
+  tone: {
+    label: "Tone",
+    options: [
+      ["neutral", "Neutral"],
+      ["formal", "Formal"],
+      ["conversational", "Conversational"],
+      ["urgent", "Urgent"],
+    ],
+  },
+  detail_level: {
+    label: "Detail",
+    options: [
+      ["brief", "Brief"],
+      ["standard", "Standard"],
+      ["detailed", "Detailed"],
+    ],
+  },
+}
+
 // Output languages: the English name, and the name in its own script.
 export const LANGUAGES: Record<Language, { name: string; native: string }> = {
   en: { name: "English", native: "English" },
@@ -33,4 +78,9 @@ export function settingsFromConfig(config: GenerationConfig): JobSettings {
     style,
     brand_kit_id: config.brand_kit?.kit_id ?? null,
   }
+}
+
+// The UI label of a chosen value: "executive" -> "Executives".
+export function choiceLabel(choice: Choice, value: string): string {
+  return CHOICES[choice].options.find(([v]) => v === value)?.[1] ?? value
 }
