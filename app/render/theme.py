@@ -78,7 +78,17 @@ class Theme:
     def css_fonts(self) -> str:
         """A CSS font-family list. The kit's font name is checked when the kit
         is saved (letters, digits, spaces, hyphens), so quoting it is safe."""
-        return ", ".join(((f'"{self.font}"',) if self.font else ()) + FALLBACK_FONTS)
+        return self.css_fonts_with(None)
+
+    def css_fonts_with(self, script_family: str | None) -> str:
+        """The same list with a font for an Indian script after the Latin
+        fonts. Pango takes each character from the first font that has it, so
+        Latin text, digits included, stays in the kit's or house font and the
+        script's letters come from the script font, never from a system
+        fallback that cannot shape them."""
+        latin, generic = FALLBACK_FONTS[:-2], FALLBACK_FONTS[-2:]
+        script = (f'"{script_family}"',) if script_family else ()
+        return ", ".join(((f'"{self.font}"',) if self.font else ()) + latin + script + generic)
 
     @property
     def deck_font(self) -> str:

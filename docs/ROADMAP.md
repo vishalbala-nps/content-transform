@@ -5,7 +5,7 @@ browser. No slice is "build the persistence layer".
 
 Mark the current slice here so a fresh session knows where it is.
 
-**Current slice: S8**, then S6 (reordered 2026-09-27 and 2026-09-28, see DECISIONS)
+**Current slice: S6** (S8 done; reordered 2026-09-27 and 2026-09-28, see DECISIONS)
 
 ---
 
@@ -181,7 +181,17 @@ Malayalam, Kannada, Telugu. UI polish is not part of S8; it comes later.
   banned phrases go into every format's prompt and are warned on.
   Without a kit the files are byte-identical to before. Checked through
   the API, in PowerPoint, and in headless Chrome.
-- **S8d — Indian-language output**, translated after the payload is filled.
+- **S8d — Indian-language output.** Done. Hindi, Tamil, Malayalam, Kannada
+  and Telugu. Each format is written, grounded and reviewed in English,
+  then translated; files and their checks use the translation. Code checks
+  numbers, digits and script, and retries a bad passage once on the
+  stronger model. Fixed labels are translated once into
+  `render/labels.json` (for a native speaker to check); PDFs embed bundled
+  Noto fonts. Checked with an eval run per language, through the API, in
+  headless Chrome, and English output unchanged. Open: Tamil and Telugu
+  expand enough to push some posts past their character limits.
+
+Done. Deferred from S8: UI polish.
 
 The pre-cached flagship demo document moved out of S8: it captures every
 format's output, so it is built after S6 (see Demo safety).

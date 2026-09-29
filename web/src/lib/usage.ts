@@ -35,7 +35,9 @@ export function jobUsage(job: Job): Usage | null {
   return sumUsage([
     job.brief_usage,
     ...job.outputs.flatMap((o) =>
-      o.usage ? [o.usage.generate, o.usage.ground, o.usage.revise] : []
+      o.usage
+        ? [o.usage.generate, o.usage.ground, o.usage.translate, o.usage.revise]
+        : []
     ),
   ])
 }

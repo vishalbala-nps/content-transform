@@ -27,10 +27,11 @@ from app.formats.base import GenerationConfig
 from app.formats.brief_view import brief_for_prompt
 from app.formats.registry import ADAPTERS
 from app.formats.runner import FormatResult, run_formats
+from app.formats.translate import NATIVE_DIGITS, SCRIPTS, translate_brief
 from app.ingest.text import ingest_text
 from app.understand.brief import build_brief
 from app.understand.schemas import ContentBrief
-from app.verify.grounding import NUMBER, number_value
+from app.verify.grounding import NUMBER, number_value, passages
 
 ROOT = Path(__file__).parent
 FIXTURES = ROOT / "fixtures"
@@ -53,7 +54,26 @@ def score_brief(brief: ContentBrief, exp: dict) -> dict:
     }
 
 
-def score_format(result: FormatResult, brief: ContentBrief, exp: dict) -> dict:
+def score_translation(result: FormatResult, language: str) -> dict:
+    """How the shipped translation compares with the English it came from.
+    Grounding and the other scores are on the English payload."""
+    schema = ADAPTERS[result.name].schema
+    english = dict(passages(schema.model_validate(result.payload)))
+    shipped = dict(passages(schema.model_validate(result.translation)))
+    low, high = SCRIPTS[language]
+    letters = [c for t in shipped.values() for c in t if c.isalpha()]
+    in_script = sum(low <= ord(c) <= high for c in letters)
+    return {
+        # Characters, translated over English: character limits are set on the English.
+        "expansion": round(sum(map(len, shipped.values())) / max(1, sum(map(len, english.values()))), 2),
+        # Letters in the target script: the rest is names, CVE ids and the like kept in Latin letters.
+        "script_share": round(in_script / max(1, len(letters)), 2),
+        "untranslated": [p for p, t in english.items() if shipped.get(p) == t and any(c.isalpha() for c in t)],
+        "native_digits": [p for p, t in shipped.items() if NATIVE_DIGITS.search(t)],
+    }
+
+
+def score_format(result: FormatResult, brief: ContentBrief, exp: dict, language: str = "en") -> dict:
     if result.error:
         return {"error": result.error}
     text = "\n".join(a.text for a in result.artifacts if a.text is not None)
@@ -72,6 +92,7 @@ def score_format(result: FormatResult, brief: ContentBrief, exp: dict) -> dict:
         if grounding
         else [],
         "grounding_error": grounding.error if grounding else None,
+        **({"translation": score_translation(result, language)} if result.translation else {}),
     }
 
 
@@ -86,22 +107,31 @@ async def run_fixture(name: str, exp: dict, formats: list[str], config: Generati
     (out / "brief.json").write_text(brief.model_dump_json(indent=2))
 
     scores = {}
+    brief_translation = None
+    if config.language != "en":
+        with metered(brief_usage):
+            brief_translation = await translate_brief(brief, config.language)
+        (out / "brief_translation.json").write_text(json.dumps(brief_translation, indent=2, ensure_ascii=False))
     usage = total(brief_usage)
-    for result in await run_formats(formats, brief, config):
+    for result in await run_formats(formats, brief, config, brief_translation):
         if result.usage:
-            usage.add(total(result.usage.generate, result.usage.ground))
+            usage.add(total(result.usage.generate, result.usage.ground, result.usage.translate))
         fmt_dir = out / result.name
         fmt_dir.mkdir()
         if result.error:
             (fmt_dir / "error.txt").write_text(result.error)
         else:
             (fmt_dir / "payload.json").write_text(json.dumps(result.payload, indent=2, ensure_ascii=False))
+            if result.translation:
+                (fmt_dir / "translation.json").write_text(
+                    json.dumps(result.translation, indent=2, ensure_ascii=False)
+                )
         for artifact in result.artifacts:
             if artifact.data is not None:
                 (fmt_dir / artifact.filename).write_bytes(artifact.data)
             else:
                 (fmt_dir / artifact.filename).write_text(artifact.text or "")
-        scores[result.name] = score_format(result, brief, exp)
+        scores[result.name] = score_format(result, brief, exp, config.language)
     return {"brief": score_brief(brief, exp), "formats": scores, "usage": usage.model_dump()}
 
 
@@ -185,6 +215,21 @@ def report(summary: dict, previous: dict | None) -> str:
             lines.append(
                 f"| {name} | {fmt} | {'; '.join(s['warnings'])} | {', '.join(s['ioc_leaks'])} "
                 f"| {', '.join(s['invented_numbers'])} | {flagged} |"
+            )
+    translated = [
+        (name, fmt, s["translation"])
+        for name, f in summary["fixtures"].items()
+        for fmt, s in f["formats"].items()
+        if "translation" in s
+    ]
+    if translated:
+        lines += ["", "## Translation", "",
+                  "| Fixture | Format | Expansion | Script share | Untranslated | Native digits |",
+                  "|---|---|---|---|---|---|"]  # fmt: skip
+        for name, fmt, t in translated:
+            lines.append(
+                f"| {name} | {fmt} | {t['expansion']} | {t['script_share']} "
+                f"| {', '.join(t['untranslated'])} | {', '.join(t['native_digits'])} |"
             )
     return "\n".join(lines) + "\n"
 

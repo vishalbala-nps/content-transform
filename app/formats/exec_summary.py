@@ -11,6 +11,7 @@ from app.formats.base import Artifact, GenerationConfig
 from app.formats.brand import theme_for
 from app.formats.brief_view import brief_for_prompt
 from app.formats.config_view import config_for_prompt
+from app.render.labels import label
 from app.render.pdf import render_pdf
 from app.understand.schemas import ContentBrief
 
@@ -81,12 +82,14 @@ class ExecSummaryAdapter:
         )
 
     def render(self, payload: ExecSummary, config: GenerationConfig, brief: ContentBrief) -> list[Artifact]:
-        sections = [f"# {payload.title}", f"**Bottom line.** {payload.bottom_line}"]
-        sections.append("## Key points\n\n" + "\n".join(f"- {p}" for p in payload.key_points))
+        lang = config.language
+        sections = [f"# {payload.title}", f"**{label('Bottom line', lang)}.** {payload.bottom_line}"]
+        points = "\n".join(f"- {p}" for p in payload.key_points)
+        sections.append(f"## {label('Key points', lang)}\n\n{points}")
         if payload.actions:
             actions = "\n".join(f"{i}. {a}" for i, a in enumerate(payload.actions, start=1))
-            sections.append("## Actions\n\n" + actions)
-        sections.append(f"*Source: {payload.source_note}*")
+            sections.append(f"## {label('Actions', lang)}\n\n{actions}")
+        sections.append(f"*{label('Source', lang)}: {payload.source_note}*")
         pdf = render_pdf(
             "exec_summary.html", theme_for(config), s=payload, title=payload.title, lang=config.language
         )
@@ -97,7 +100,9 @@ class ExecSummaryAdapter:
 
     def check(self, payload: ExecSummary, artifacts: list[Artifact], config: GenerationConfig) -> list[str]:
         warnings = []
-        if (words := len(artifacts[0].text.split())) > (limit := MAX_WORDS[config.detail_level]):
+        # Set in English words; a translation's word count is not comparable.
+        english = config.language == "en"
+        if english and (words := len(artifacts[0].text.split())) > (limit := MAX_WORDS[config.detail_level]):
             warnings.append(f"summary is {words}/{limit} words")
         low, high = POINTS[config.detail_level]
         if not low <= (n := len(payload.key_points)) <= high:

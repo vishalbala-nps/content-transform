@@ -361,6 +361,7 @@ export function App() {
                 jobId={current.id}
                 result={o}
                 brief={current.brief!}
+                language={current.config.language}
                 selectedPath={
                   selection?.format === o.name ? selection.path : null
                 }

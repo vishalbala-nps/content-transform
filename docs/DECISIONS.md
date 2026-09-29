@@ -852,3 +852,81 @@ cache is still read for everything else, and the rewrite is still stored.
   installed). A new kit is chosen for the next job; an opened job whose
   kit was deleted since starts the next job without one. FastAPI
   validation errors now show as their messages, not JSON.
+
+**2026-09-28 — S8d: Indian-language output, translated after writing and checking.**
+Decided with the user: review stays in English; fixed labels are
+translated once and checked in; the brief's copied wording is translated
+once per job, values never; Noto fonts are bundled.
+- Order per format: write in English, ground against the English brief,
+  translate the payload (one call), render and check the translation. The
+  English payload stays what is grounded and reviewed
+  (`FormatResult.payload`); the translation is `FormatResult.translation`.
+  Edit and Regenerate change the English and translate that one passage
+  again; Delete removes the same entry from both; Accept touches neither.
+- Passages go to the model with ids and code puts each translation back at
+  its path, as grounding does, so the structure cannot change.
+- Code checks each translated passage: every number still there (by value,
+  so Indian grouping "4,10,000" matches "410,000", and with no word
+  boundary, since Kannada and Telugu attach endings to numbers: "2026ರ",
+  "22న"); no native digits; no letters from another script; and, for four
+  words or more, at least 15% of letters in the language's script. A
+  passage that fails is sent once more with the problem named, to the
+  stronger model (`GEMINI_STRONG_MODEL`, default `gemini-3.5-flash`):
+  Flash-Lite repeated its own mistakes when asked again. What is still wrong
+  becomes a warning, never a failure. Found in testing: Flash-Lite put
+  Chinese for "bypass" (绕过) into Hindi twice, and returned a lone edited
+  passage as Hindi in Latin letters; the retry fixed both.
+- The translation prompt keeps names, product names, CVE ids, versions,
+  abbreviations, URLs and hashes in Latin letters, numbers in Western
+  digits, every qualifier and attribution, and security terms in their
+  security sense ("compromise" is a breach, not an agreement, which both
+  models got wrong without being told).
+- Word limits (deck bullets and titles, exec summary and advisory summary
+  words) are checked on English output only: they are set in English
+  words, and Hindi writes case endings as separate words, so ten deck
+  warnings on one Hindi deck meant nothing. Character limits (tweets,
+  LinkedIn) and counts (tweets, slides, points) are checked on what ships.
+- The brief's wording that renderers copy (figure labels, timeline dates and
+  events, affected versions, the publication date) is translated once per
+  job and stored in a new nullable column, `jobs.brief_translation`; its
+  usage is added to the brief's.
+- Fixed labels: `render/labels.json`, keyed by the English text, 54 labels,
+  filled by `python -m tools.translate_labels` (a dev tool; render/ never
+  calls a model). A label missing from the file fails in English too. The
+  first pass with Flash-Lite had "Indicators of compromise" as "indicators
+  of an agreement" and Tamil "Critical" as "complicated"; the tool now
+  gives sense notes for ambiguous labels and uses `gemini-3.5-flash`,
+  20 labels per call. The page footer is a label with {page} and {pages},
+  since word order differs ("{pages} లో {page} వ పేజీ"). A native speaker
+  should read the file before a demo.
+- PDF fonts: with no font named, Pango fell back to Arial Unicode MS, which
+  cannot shape these scripts (Telugu and Kannada vowel signs came apart).
+  Noto Sans Devanagari, Tamil, Malayalam, Kannada and Telugu, regular and
+  bold, are bundled in `render/fonts/` (1.2 MB, SIL Open Font License) and
+  embedded for the job's language only, as data: URIs, so the fetcher rule
+  is unchanged. They sit after the Latin fonts in the font list, so Latin
+  text and digits keep the kit's or house font. PDFs stay about 20 KB.
+  Text copied out of such a PDF is about 97% exact (a stray character per
+  line, numbers intact); the markdown artifact, which Copy uses, is exact.
+- Decks need nothing: PowerPoint shapes all five scripts with its own
+  Indic fonts (Mangal, Latha, Kartika, Tunga, Gautami), checked on Mac.
+- Hashtags are translated like any other passage, and the model sometimes
+  keeps them in English; left as it is for now.
+- Eval runs, all five fixtures and formats, English writing from the cache
+  so only translation is new (after the number-check fix for kn and te):
+  | Language | Run | Warnings | Expansion | Min script share | Cost |
+  |---|---|---|---|---|---|
+  | Hindi | 20260928-221745 | 3 | 1.03 | 0.63 | $0.11 |
+  | Tamil | 20260928-221830 | 4 | 1.26 | 0.67 | $0.24 |
+  | Malayalam | 20260928-222113 | 3 | 1.20 | 0.72 | $0.22 |
+  | Kannada | 20260928-223403 | 3 | 1.12 | 0.76 | $0.24 |
+  | Telugu | 20260928-223755 | 2 | 1.09 | 0.68 | $0.12 |
+  28/28 facts and 6 flagged passages in each (grounding reads the English).
+  No translation warnings remain. The warnings left are length: Tamil
+  expands most, one Tamil tweet was 295/280 characters and Tamil and Telugu
+  LinkedIn posts ran to 1,650-1,993 of 1,300. Open: give formats a smaller
+  English budget for languages that expand, if this recurs.
+- English output is unchanged: the default eval was all cache hits with no
+  score moving, and English PDFs and deck XML are byte-identical. The one
+  English change is deliberate: the advisory markdown's indicator types
+  read "IP", "Domain" instead of "ip", "domain", as the PDF does.

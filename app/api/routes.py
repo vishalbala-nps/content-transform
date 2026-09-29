@@ -12,7 +12,16 @@ from app.core.brand_kits import BrandKitError, BrandKitFields
 from app.core.llm import LLMError
 from app.core.usage import Usage
 from app.db.models import Job
-from app.formats.base import Artifact, Audience, BrandKit, DetailLevel, GenerationConfig, Objective, Tone
+from app.formats.base import (
+    Artifact,
+    Audience,
+    BrandKit,
+    DetailLevel,
+    GenerationConfig,
+    Language,
+    Objective,
+    Tone,
+)
 from app.formats.registry import ADAPTERS
 from app.formats.runner import FormatResult
 from app.ingest.base import SourceDocument
@@ -37,8 +46,7 @@ class FormatInfo(BaseModel):
 
 
 class JobSettings(BaseModel):
-    """What a job request chooses; the job's GenerationConfig is built from it.
-    Language is added when translation exists."""
+    """What a job request chooses; the job's GenerationConfig is built from it."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -46,6 +54,7 @@ class JobSettings(BaseModel):
     tone: Tone = "neutral"
     detail_level: DetailLevel = "standard"
     objective: Objective = "inform"
+    language: Language = "en"  # written in English, then translated (formats/translate.py)
     style: str | None = Field(default=None, max_length=300)
     brand_kit_id: str | None = None  # a saved kit; the job keeps a copy of it
 

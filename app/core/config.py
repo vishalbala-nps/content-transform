@@ -13,6 +13,7 @@ class Settings:
     llm_provider: Literal["gemini", "ollama"]  # which one every model call goes to
     gemini_api_key: str | None
     gemini_model: str
+    gemini_strong_model: str  # for the few calls worth more: retrying a translation that went wrong
     ollama_url: str
     ollama_model: str
     ollama_num_ctx: int  # context window in tokens; Ollama's own default (4096) cuts long sources
@@ -26,6 +27,11 @@ class Settings:
     def llm_model(self) -> str:
         return self.ollama_model if self.llm_provider == "ollama" else self.gemini_model
 
+    @property
+    def llm_strong_model(self) -> str:
+        """Ollama has one local model, so it is the strong one too."""
+        return self.ollama_model if self.llm_provider == "ollama" else self.gemini_strong_model
+
 
 def get_settings() -> Settings:
     provider = os.environ.get("LLM_PROVIDER", "gemini")
@@ -35,6 +41,7 @@ def get_settings() -> Settings:
         llm_provider=provider,
         gemini_api_key=os.environ.get("GEMINI_API_KEY"),
         gemini_model=os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+        gemini_strong_model=os.environ.get("GEMINI_STRONG_MODEL", "gemini-3.5-flash"),
         ollama_url=os.environ.get("OLLAMA_URL", "http://localhost:11434"),
         ollama_model=os.environ.get("OLLAMA_MODEL", "qwen3:latest"),
         ollama_num_ctx=int(os.environ.get("OLLAMA_NUM_CTX", "16384")),

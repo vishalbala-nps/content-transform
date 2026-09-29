@@ -15,6 +15,7 @@ from app.formats.base import Artifact, GenerationConfig
 from app.formats.brand import theme_for
 from app.formats.brief_view import brief_for_prompt
 from app.formats.config_view import config_for_prompt
+from app.render.labels import label
 from app.render.pptx import DeckBuilder
 from app.understand.schemas import ContentBrief
 
@@ -27,7 +28,6 @@ MAX_NUMBERS = 4
 # Past these the text crowds the slide; check() warns.
 TITLE_WORDS = 14
 BULLET_WORDS = 16
-NUMBERS_TITLE = "Key figures"
 
 
 class KeyNumber(BaseModel):
@@ -108,19 +108,20 @@ Brief:
 """
 
 
-def _outline(payload: Deck) -> str:
+def _outline(payload: Deck, lang: str) -> str:
     """The deck as markdown: what Copy gives, and readable without PowerPoint."""
+    notes = label("Notes", lang)
     parts = [f"# {payload.title}\n\n*{payload.subtitle}*"]
     if payload.opening_notes:
-        parts.append(f"> Notes: {payload.opening_notes}")
+        parts.append(f"> {notes}: {payload.opening_notes}")
     if payload.key_numbers:
         numbers = "\n".join(f"- **{n.value}** {n.label}" for n in payload.key_numbers)
-        parts.append(f"## {NUMBERS_TITLE}\n\n{numbers}")
+        parts.append(f"## {label('Key figures', lang)}\n\n{numbers}")
         if payload.key_numbers_notes:
-            parts.append(f"> Notes: {payload.key_numbers_notes}")
+            parts.append(f"> {notes}: {payload.key_numbers_notes}")
     for slide in payload.slides:
         bullets = "\n".join(f"- {b}" for b in slide.bullets)
-        parts.append(f"## {slide.title}\n\n{bullets}\n\n> Notes: {slide.notes}")
+        parts.append(f"## {slide.title}\n\n{bullets}\n\n> {notes}: {slide.notes}")
     return "\n\n".join(parts)
 
 
@@ -148,11 +149,11 @@ class DeckAdapter:
         deck.title_slide(payload.title, payload.subtitle, payload.opening_notes)
         if payload.key_numbers:
             numbers = [(n.value, n.label) for n in payload.key_numbers]
-            deck.numbers_slide(NUMBERS_TITLE, numbers, payload.key_numbers_notes)
+            deck.numbers_slide(label("Key figures", config.language), numbers, payload.key_numbers_notes)
         for slide in payload.slides:
             deck.bullets_slide(slide.title, slide.bullets, slide.notes)
         return [
-            Artifact(filename="deck.md", media_type="text/markdown", text=_outline(payload)),
+            Artifact(filename="deck.md", media_type="text/markdown", text=_outline(payload, config.language)),
             Artifact(filename="deck.pptx", media_type=PPTX, data=deck.to_bytes()),
         ]
 
@@ -163,11 +164,14 @@ class DeckAdapter:
             warnings.append(f"{n} content slides; {config.detail_level} is {low}-{high}")
         # Numbered as in the deck: the title slide is 1, then key figures if present.
         first = 3 if payload.key_numbers else 2
+        # Word limits are set in English words; a translation's word count is
+        # not comparable (Hindi writes case endings as separate words).
+        words = config.language == "en"
         for number, slide in enumerate(payload.slides, start=first):
-            if (n := len(slide.title.split())) > TITLE_WORDS:
+            if words and (n := len(slide.title.split())) > TITLE_WORDS:
                 warnings.append(f"slide {number} title is {n}/{TITLE_WORDS} words")
             for i, bullet in enumerate(slide.bullets, start=1):
-                if (n := len(bullet.split())) > BULLET_WORDS:
+                if words and (n := len(bullet.split())) > BULLET_WORDS:
                     warnings.append(f"slide {number} bullet {i} is {n}/{BULLET_WORDS} words")
             if not slide.notes.strip():
                 warnings.append(f"slide {number} has no speaker notes")

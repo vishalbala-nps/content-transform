@@ -28,6 +28,7 @@ from app.db.models import Job, session
 from app.formats.base import GenerationConfig
 from app.formats.registry import ADAPTERS
 from app.formats.runner import FormatResult, run_format
+from app.formats.translate import translate_brief
 from app.ingest.base import SourceDocument
 from app.understand.brief import build_brief
 from app.understand.schemas import ContentBrief
@@ -53,6 +54,7 @@ def create_job(source: SourceDocument, formats: list[str], config: GenerationCon
         source=source.model_dump(mode="json"),
         brief=None,
         brief_usage=None,
+        brief_translation=None,
         outputs={},
         error=None,
     )
@@ -117,8 +119,10 @@ def save_output(job_id: str, result: FormatResult) -> None:
         s.commit()
 
 
-async def _run_and_save(job_id: str, name: str, brief: ContentBrief, config: GenerationConfig) -> None:
-    result = await run_format(ADAPTERS[name], brief, config)  # never raises: errors are in the result
+async def _run_and_save(
+    job_id: str, name: str, brief: ContentBrief, config: GenerationConfig, brief_translation: dict | None
+) -> None:
+    result = await run_format(ADAPTERS[name], brief, config, brief_translation)  # never raises
     save_output(job_id, result)
 
 
@@ -143,8 +147,18 @@ async def run_job(job_id: str) -> None:
             # Formats would be written from nothing, and grounding would have nothing to check.
             _update(job_id, status="failed", error=NO_CLAIMS)
             return
+        brief_translation = job.brief_translation
+        if config.language != "en" and brief_translation is None:
+            # Once per job, before the formats that copy this wording into files.
+            usage = Usage.model_validate(get_job(job_id).brief_usage or {})
+            with metered(usage):
+                try:
+                    brief_translation = await translate_brief(brief, config.language)
+                finally:
+                    _update(job_id, brief_usage=usage.model_dump())
+            _update(job_id, brief_translation=brief_translation)
         todo = [n for n in job.formats if n not in job.outputs]
-        await asyncio.gather(*(_run_and_save(job_id, n, brief, config) for n in todo))
+        await asyncio.gather(*(_run_and_save(job_id, n, brief, config, brief_translation) for n in todo))
     except LLMError as e:
         _update(job_id, status="failed", error=str(e))
         return

@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <title>{{ title }}</title>
 <style>
+  /* Bundled fonts for the output language's script, if it needs one. */
+  {{ font_faces|safe }}
+
   /* Every value below comes from the Theme (render/theme.py): the house style,
      or a brand kit's. Colours and the font name are validated when a kit is
      saved, so they are safe to write into CSS unescaped (|safe: autoescaping
@@ -24,7 +27,7 @@
     margin: 24mm 20mm 22mm;
     @top-left {
       content: string(kind);
-      font: 600 7.5pt {{ theme.css_fonts|safe }};
+      font: 600 7.5pt {{ fonts|safe }};
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: {{ theme.accent }};
@@ -33,25 +36,25 @@
     }
     @top-right {
       content: string(org);
-      font: 7.5pt {{ theme.css_fonts|safe }};
+      font: 7.5pt {{ fonts|safe }};
       color: {{ theme.muted }};
       vertical-align: bottom;
       padding-bottom: 3mm;
     }
     @bottom-left {
       content: string(note);
-      font: 7.5pt {{ theme.css_fonts|safe }};
+      font: 7.5pt {{ fonts|safe }};
       color: {{ theme.muted }};
     }
     @bottom-right {
-      content: "Page " counter(page) " of " counter(pages);
-      font: 7.5pt {{ theme.css_fonts|safe }};
+      content: {{ page_counter|safe }};
+      font: 7.5pt {{ fonts|safe }};
       color: {{ theme.muted }};
     }
   }
 
   html {
-    font-family: {{ theme.css_fonts|safe }};
+    font-family: {{ fonts|safe }};
     font-size: 10.5pt;
     line-height: 1.5;
     color: var(--ink);

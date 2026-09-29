@@ -162,8 +162,15 @@ to every format in a job.
 - `detail_level` is turned into targets by each format (tweets, slides,
   words), stated in its prompt and warned on by its `check()`. The schema
   allows the widest range, since `schema` is one class per format.
-- `language` (S8d): prompts are written in English and the payload is
-  translated afterwards. Numbers stay in Western digits in every language.
+- `language`: every format is written, grounded and reviewed in English;
+  for another language its payload is then translated
+  (`formats/translate.py`, one call per format) and the files are rendered
+  and checked from the translation (`FormatResult.translation`). The
+  brief's wording that renderers copy (figure labels, timeline, dates,
+  affected versions) is translated once per job (`jobs.brief_translation`);
+  values are never translated. Numbers stay in Western digits. Fixed labels
+  in files come from `render/labels.json`, translated once and checked in;
+  PDFs embed bundled Noto fonts for the script (`render/fonts/`).
 - `brand_kit` is copied from a saved kit (`core/brand_kits.py`, table
   `brand_kits`) when the job is created, so editing or deleting the kit
   never changes an old job. Renderers receive a `Theme` (`render/theme.py`)
@@ -173,7 +180,8 @@ to every format in a job.
   rendering, for every format.
 
 Translation runs **after** schema filling so character limits and layout
-constraints still hold.
+constraints still hold, and after grounding, so the fact check always reads
+English.
 
 ## Directory layout
 
@@ -185,15 +193,17 @@ app/
                  pdf.py, html.py, image.py
   understand/    brief.py, schemas.py, prompts/
   formats/       base.py, registry.py, runner.py, brief_view.py, config_view.py,
-                 brand.py,
+                 brand.py, translate.py,
                  linkedin.py, x_thread.py, advisory.py,
                  infographic.py, exec_summary.py, deck.py
-  render/        theme.py, pdf.py, pptx.py, svg.py, templates/
+  render/        theme.py, labels.py, labels.json, pdf.py, pptx.py, svg.py,
+                 templates/, fonts/
   verify/        grounding.py, pii.py
   api/           routes.py, sse.py
   db/            models.py, migrations/
 web/             React + Vite
 evals/           fixtures/, run_evals.py
+tools/           translate_labels.py (fills render/labels.json)
 storage/         artifacts/
 ```
 

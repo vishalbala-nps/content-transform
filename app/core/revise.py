@@ -13,6 +13,9 @@ Markdown, the PDF and the deck all change together.
   added to the format's `usage.revise`, even when the regenerate fails.
 - Accepting leaves the text and its reasons as they are and marks the flag as
   reviewed. It can be undone.
+- In a job in another language, review is in English: an edited or
+  regenerated passage is translated again on its own and put into the
+  translation, and a delete removes the same entry from both.
 - Deleting removes the nearest list entry holding the passage: a paragraph,
   a tweet, a bullet, or a whole slide for a slide's title or notes. Fields
   outside any list (a summary, a title) are required and cannot be deleted.
@@ -36,6 +39,7 @@ from app.core.usage import Usage, metered
 from app.formats.base import GenerationConfig, OutputAdapter
 from app.formats.registry import ADAPTERS
 from app.formats.runner import FormatResult, FormatUsage, render_format
+from app.formats.translate import translate_texts
 from app.understand.schemas import ContentBrief
 from app.verify.grounding import (
     Passage,
@@ -64,7 +68,9 @@ class _Loaded:
     config: GenerationConfig
     adapter: OutputAdapter
     result: FormatResult
-    payload: BaseModel
+    payload: BaseModel  # English
+    translation: BaseModel | None  # the payload in the job's language; None for English
+    brief_translation: dict[str, str] | None
     passage: Passage
 
 
@@ -86,6 +92,7 @@ def _load(job_id: str, name: str, path: str) -> _Loaded:
         raise ReviseError(f"No passage at {path}.", 404)
     try:
         payload = adapter.schema.model_validate(result.payload)
+        translation = adapter.schema.model_validate(result.translation) if result.translation else None
     except ValidationError as e:
         raise ReviseError(f"The saved output no longer fits the {name} schema: {e}", 409) from e
     return _Loaded(
@@ -94,6 +101,8 @@ def _load(job_id: str, name: str, path: str) -> _Loaded:
         adapter=adapter,
         result=result,
         payload=payload,
+        translation=translation,
+        brief_translation=job.brief_translation,
         passage=passage,
     )
 
@@ -113,22 +122,45 @@ def _plus_revision(usage: FormatUsage | None, spent: Usage) -> FormatUsage:
     return usage
 
 
+def _keep_spent(job_id: str, loaded: _Loaded, spent: Usage) -> None:
+    """A revision failed after making billed calls: record them, change nothing else."""
+    if spent.calls:
+        usage = _plus_revision(loaded.result.usage, spent)
+        jobs.save_output(job_id, loaded.result.model_copy(update={"usage": usage}))
+
+
 async def _rewrite(
-    job_id: str, loaded: _Loaded, text: str, passage: Passage, usage: FormatUsage | None = None
+    job_id: str, loaded: _Loaded, text: str, passage: Passage, spent: Usage | None = None
 ) -> FormatResult:
-    """Put `text` at the passage's path, then render, check and save the format again."""
+    """Put `text` at the passage's path (translating it for a job in another
+    language), then render, check and save the format again. `spent` holds
+    the revision's calls so far; translating adds to it."""
+    spent = spent if spent is not None else Usage()
     try:
         payload = replace_at(loaded.payload, passage.path, text)
     except ValidationError as e:
         raise ReviseError(f"The new text does not fit this output: {e}", 422) from e
-    artifacts, warnings = await render_format(loaded.adapter, payload, loaded.config, loaded.brief)
+    translation = loaded.translation
+    if translation is not None:
+        try:
+            with metered(spent):
+                translated = await translate_texts({passage.path: text}, loaded.config.language)
+        except Exception:
+            _keep_spent(job_id, loaded, spent)
+            raise
+        translation = replace_at(translation, passage.path, translated[passage.path])
+    artifacts, warnings = await render_format(
+        loaded.adapter, payload, loaded.config, loaded.brief, translation, loaded.brief_translation
+    )
+    changed_usage = spent.calls or spent.cached_calls
     result = _with_passage(
         loaded.result,
         passage,
         artifacts=artifacts,
         warnings=warnings,
         payload=payload.model_dump(),
-        **({"usage": usage} if usage else {}),
+        translation=translation.model_dump() if translation is not None else None,
+        **({"usage": _plus_revision(loaded.result.usage, spent)} if changed_usage else {}),
     )
     jobs.save_output(job_id, result)
     return result
@@ -214,19 +246,13 @@ async def regenerate(job_id: str, name: str, path: str) -> FormatResult:
                 payload = replace_at(loaded.payload, path, text)
                 grounding = await ground(payload, loaded.brief, paths={path})
         except Exception:
-            if spent.calls:  # billed even though nothing changes: keep the record
-                usage = _plus_revision(loaded.result.usage, spent)
-                jobs.save_output(job_id, loaded.result.model_copy(update={"usage": usage}))
+            _keep_spent(job_id, loaded, spent)  # billed even though nothing changes
             raise
         checked = grounding.passages[0]
         if grounding.error:
             checked.reasons.append(grounding.error)
         return await _rewrite(
-            job_id,
-            loaded,
-            text,
-            checked.model_copy(update={"review": "regenerated"}),
-            usage=_plus_revision(loaded.result.usage, spent),
+            job_id, loaded, text, checked.model_copy(update={"review": "regenerated"}), spent
         )
 
 
@@ -239,6 +265,8 @@ async def delete(job_id: str, name: str, path: str) -> FormatResult:
             raise ReviseError("This section is required in this output. Edit it instead of deleting it.", 409)
         try:
             payload = delete_at(loaded.payload, entry)
+            # Same structure, so the same entry: no model call.
+            translation = delete_at(loaded.translation, entry) if loaded.translation is not None else None
         except ValidationError as e:
             field = field_at(loaded.adapter.schema, entry)
             least = next((m.min_length for m in field.metadata if hasattr(m, "min_length")), None)
@@ -246,7 +274,9 @@ async def delete(job_id: str, name: str, path: str) -> FormatResult:
             message = f"Cannot delete: at least {least} {what} are needed." if least else str(e)
             raise ReviseError(message, 422) from e
 
-        artifacts, warnings = await render_format(loaded.adapter, payload, loaded.config, loaded.brief)
+        artifacts, warnings = await render_format(
+            loaded.adapter, payload, loaded.config, loaded.brief, translation, loaded.brief_translation
+        )
         passages = []
         for p in loaded.result.grounding.passages:
             moved = path_after_delete(p.path, entry)
@@ -257,6 +287,7 @@ async def delete(job_id: str, name: str, path: str) -> FormatResult:
                 "artifacts": artifacts,
                 "warnings": warnings,
                 "payload": payload.model_dump(),
+                "translation": translation.model_dump() if translation is not None else None,
                 "grounding": loaded.result.grounding.model_copy(update={"passages": passages}),
             }
         )

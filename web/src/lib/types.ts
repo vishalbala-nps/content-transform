@@ -147,6 +147,7 @@ export interface JobSettings {
   tone: Tone
   detail_level: DetailLevel
   objective: Objective
+  language: Language // written in English, then translated
   style: string | null
   brand_kit_id: string | null // a saved kit; the job keeps a copy
 }
@@ -202,6 +203,7 @@ export interface Usage {
 export interface FormatUsage {
   generate: Usage | null
   ground: Usage | null
+  translate: Usage // translating the payload, for a language other than English
   revise: Usage // regenerated passages, each checked again
 }
 
@@ -210,7 +212,8 @@ export interface FormatResult {
   label: string
   artifacts: Artifact[]
   warnings: string[]
-  payload: Record<string, unknown> | null
+  payload: Record<string, unknown> | null // English: what is grounded and reviewed
+  translation: Record<string, unknown> | null // the payload in the job's language; null for English
   error: string | null
   grounding: Grounding | null // null on failed formats and older jobs
   usage: FormatUsage | null // null on older jobs

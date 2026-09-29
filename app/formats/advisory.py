@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from app.formats.base import Artifact, GenerationConfig
 from app.formats.brand import theme_for
 from app.formats.brief_view import brief_for_prompt
+from app.render.labels import label
 from app.formats.config_view import config_for_prompt
 from app.render.pdf import render_pdf
 from app.understand.schemas import ContentBrief
@@ -100,6 +101,16 @@ SOURCE_KINDS = {
     "internal_document": "Internal document",
     "other": "Document",
 }
+IOC_KINDS = {
+    "ip": "IP",
+    "domain": "Domain",
+    "url": "URL",
+    "hash": "Hash",
+    "email": "Email",
+    "file": "File",
+    "other": "Other",
+}
+# The labels above are English keys of app/render/labels.json: translated at use.
 
 
 def _tables(brief: ContentBrief) -> list[str]:
@@ -125,37 +136,44 @@ def _kind(payload: Advisory, brief: ContentBrief) -> str:
     return "Advisory" if payload.status == "action_required" else "Information bulletin"
 
 
-def _markdown(payload: Advisory, brief: ContentBrief, kind: str, source: str) -> str:
+def _markdown(payload: Advisory, brief: ContentBrief, kind: str, source: str, lang: str) -> str:
     """The same advisory as markdown, for Copy. Same tables, same order as the PDF."""
+
+    def t(text: str) -> str:
+        return label(text, lang)
+
+    def table(*headers: str) -> list[str]:
+        return ["| " + " | ".join(t(h) for h in headers) + " |", "|" + "---|" * len(headers)]
+
     lines = [f"# {kind}: {payload.title}", "", f"*{source}*", ""]
-    status = "Action required" if payload.status == "action_required" else "For information"
-    lines.append(f"**Status:** {status}  ")
+    status = t("Action required") if payload.status == "action_required" else t("For information")
+    lines.append(f"**{t('Status')}:** {status}  ")
     security = brief.security
     if security and security.severity:
         score = f" (CVSS {security.cvss_score})" if security.cvss_score is not None else ""
-        lines.append(f"**Severity:** {SEVERITY_LABELS[security.severity]}{score}  ")
+        lines.append(f"**{t('Severity')}:** {t(SEVERITY_LABELS[security.severity])}{score}  ")
     if security and security.cve_ids:
-        lines.append(f"**CVE:** {', '.join(security.cve_ids)}  ")
-    lines += [f"**Audience:** {payload.audience}", "", "## Summary", "", payload.summary, ""]
+        lines.append(f"**{t('CVE')}:** {', '.join(security.cve_ids)}  ")
+    lines += [f"**{t('Audience')}:** {payload.audience}", "", f"## {t('Summary')}", "", payload.summary, ""]
     if security and security.affected_products:
-        lines += ["## Affected products", "", "| Product | Affected versions |", "|---|---|"]
+        lines += [f"## {t('Affected products')}", "", *table("Product", "Affected versions")]
         lines += [f"| {p.name} | {p.versions} |" for p in security.affected_products]
         lines.append("")
-    lines += ["## Details", "", *(d + "\n" for d in payload.details)]
-    lines += ["## Impact", "", payload.impact, ""]
+    lines += [f"## {t('Details')}", "", *(d + "\n" for d in payload.details)]
+    lines += [f"## {t('Impact')}", "", payload.impact, ""]
     if payload.actions:
-        lines += ["## Actions", "", *(f"{i}. {a}" for i, a in enumerate(payload.actions, start=1)), ""]
+        lines += [f"## {t('Actions')}", "", *(f"{i}. {a}" for i, a in enumerate(payload.actions, start=1)), ""]
     if brief.stats:
-        lines += ["## Key figures", "", "| Figure | What it measures |", "|---|---|"]
+        lines += [f"## {t('Key figures')}", "", *table("Figure", "What it measures")]
         lines += [f"| {s.value} | {s.label} |" for s in brief.stats]
         lines.append("")
     if brief.timeline:
-        lines += ["## Timeline", "", "| When | Event |", "|---|---|"]
-        lines += [f"| {t.when} | {t.event} |" for t in brief.timeline]
+        lines += [f"## {t('Timeline')}", "", *table("When", "Event")]
+        lines += [f"| {e.when} | {e.event} |" for e in brief.timeline]
         lines.append("")
     if security and security.iocs:
-        lines += ["## Indicators of compromise", "", "| Type | Indicator |", "|---|---|"]
-        lines += [f"| {i.kind} | `{i.value}` |" for i in security.iocs]
+        lines += [f"## {t('Indicators of compromise')}", "", *table("Type", "Indicator")]
+        lines += [f"| {t(IOC_KINDS[i.kind])} | `{i.value}` |" for i in security.iocs]
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -177,9 +195,11 @@ class AdvisoryAdapter:
         )
 
     def render(self, payload: Advisory, config: GenerationConfig, brief: ContentBrief) -> list[Artifact]:
-        kind = _kind(payload, brief)
+        lang = config.language
+        kind = label(_kind(payload, brief), lang)
         origin, published = brief.source.origin, brief.source.published
-        source = ", ".join(x for x in (SOURCE_KINDS[brief.source.kind], origin, published) if x)
+        source = ", ".join(x for x in (label(SOURCE_KINDS[brief.source.kind], lang), origin, published) if x)
+        severity = brief.security.severity if brief.security else None
         pdf = render_pdf(
             "advisory.html",
             theme_for(config),
@@ -187,12 +207,14 @@ class AdvisoryAdapter:
             brief=brief,
             kind=kind,
             source=source,
-            severity=SEVERITY_LABELS.get(brief.security.severity) if brief.security and brief.security.severity else None,
+            severity=label(SEVERITY_LABELS[severity], lang) if severity else None,
+            ioc_kinds=IOC_KINDS,
             title=payload.title,
-            lang=config.language,
+            lang=lang,
         )
+        markdown = _markdown(payload, brief, kind, source, lang)
         return [
-            Artifact(filename="advisory.md", media_type="text/markdown", text=_markdown(payload, brief, kind, source)),
+            Artifact(filename="advisory.md", media_type="text/markdown", text=markdown),
             Artifact(filename="advisory.pdf", media_type="application/pdf", data=pdf),
         ]
 
@@ -201,7 +223,8 @@ class AdvisoryAdapter:
         low, high = DETAILS[config.detail_level]
         if not low <= (n := len(payload.details)) <= high:
             warnings.append(f"{n} detail paragraphs; {config.detail_level} is {low}-{high}")
-        if (n := len(payload.summary.split())) > SUMMARY_WORDS:
+        # Set in English words; a translation's word count is not comparable.
+        if config.language == "en" and (n := len(payload.summary.split())) > SUMMARY_WORDS:
             warnings.append(f"summary is {n}/{SUMMARY_WORDS} words")
         if payload.status == "action_required" and not payload.actions:
             warnings.append("marked action required but lists no actions")

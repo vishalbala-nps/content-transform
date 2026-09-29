@@ -8,7 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type { BrandKit, JobSettings } from "@/lib/types"
+import { LANGUAGES } from "@/lib/settings"
+import type { BrandKit, JobSettings, Language } from "@/lib/types"
 
 // The choices a job applies to every format it generates. Values mirror
 // GenerationConfig in app/formats/base.py; the labels are only for the UI.
@@ -101,6 +102,31 @@ export function JobSettingsFields({
             </Select>
           </div>
         ))}
+        <div className="space-y-1">
+          <Label
+            htmlFor="setting-language"
+            className="text-xs font-normal text-muted-foreground"
+          >
+            Language
+          </Label>
+          <Select
+            value={value.language}
+            onValueChange={(v) =>
+              onChange({ ...value, language: v as Language })
+            }
+          >
+            <SelectTrigger id="setting-language" className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(LANGUAGES).map(([code, l]) => (
+                <SelectItem key={code} value={code}>
+                  {code === "en" ? l.name : `${l.native} · ${l.name}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="min-w-64 flex-1 space-y-1">
           <Label
             htmlFor="setting-style"

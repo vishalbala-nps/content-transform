@@ -102,10 +102,17 @@ function FormatRows({
 }) {
   if (!usage) return <Row label={label} usage={null} />
   const revised = usage.revise.calls + usage.revise.cached_calls > 0
+  // Older results have no translate part; English ones have an empty one.
+  const translated =
+    usage.translate != null &&
+    usage.translate.calls + usage.translate.cached_calls > 0
   return (
     <>
       <Row label={`${label}: writing`} usage={usage.generate} />
       <Row label={`${label}: checking`} usage={usage.ground} />
+      {translated && (
+        <Row label={`${label}: translating`} usage={usage.translate} />
+      )}
       {revised && <Row label={`${label}: revisions`} usage={usage.revise} />}
     </>
   )

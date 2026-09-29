@@ -16,12 +16,14 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { artifactUrl } from "@/lib/api"
 import { isFlagged } from "@/lib/grounding"
+import { LANGUAGES } from "@/lib/settings"
 import { cn } from "@/lib/utils"
 import type {
   Artifact,
   ContentBrief,
   FormatResult,
   Grounding,
+  Language,
 } from "@/lib/types"
 
 // One card per generated format. Knows nothing about any particular format:
@@ -111,6 +113,7 @@ function Body({
   jobId,
   result,
   brief,
+  language,
   selectedPath,
   onSelect,
   onRevised,
@@ -118,6 +121,7 @@ function Body({
   jobId: string
   result: FormatResult
   brief: ContentBrief
+  language: Language
   selectedPath: string | null
   onSelect: (path: string | null) => void
   onRevised: (result: FormatResult) => void
@@ -135,13 +139,27 @@ function Body({
   const shown = flaggedOnly
     ? grounding.passages.filter((p) => isFlagged(p) || p.path === selectedPath)
     : grounding.passages
+  // Review is always in English, the language the output was written and
+  // checked in; the files and the Text tab are in the job's language.
+  const translated = result.translation !== null && language !== "en"
   return (
     <Tabs defaultValue="review">
       <TabsList>
-        <TabsTrigger value="review">Review</TabsTrigger>
-        <TabsTrigger value="text">Text</TabsTrigger>
+        <TabsTrigger value="review">
+          {translated ? "Review (English)" : "Review"}
+        </TabsTrigger>
+        <TabsTrigger value="text">
+          {translated ? `Text (${LANGUAGES[language].native})` : "Text"}
+        </TabsTrigger>
       </TabsList>
       <TabsContent value="review" className="space-y-2">
+        {translated && (
+          <p className="text-xs text-muted-foreground">
+            Written and checked in English. Edits and regenerated passages are
+            translated into {LANGUAGES[language].name} again; the files use the
+            translation.
+          </p>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <GroundingSummary grounding={grounding} />
           {flagged.length > 0 && (
@@ -175,6 +193,7 @@ export function OutputPanel({
   jobId,
   result,
   brief,
+  language,
   selectedPath,
   onSelect,
   onRevised,
@@ -182,6 +201,7 @@ export function OutputPanel({
   jobId: string
   result: FormatResult
   brief: ContentBrief
+  language: Language
   selectedPath: string | null // the selected passage, if it is in this format
   onSelect: (path: string | null) => void
   onRevised: (result: FormatResult) => void // a passage was edited, accepted or regenerated
@@ -219,6 +239,7 @@ export function OutputPanel({
           jobId={jobId}
           result={result}
           brief={brief}
+          language={language}
           selectedPath={selectedPath}
           onSelect={onSelect}
           onRevised={onRevised}
