@@ -181,6 +181,7 @@ def _markdown(payload: Advisory, brief: ContentBrief, kind: str, source: str, la
 class AdvisoryAdapter:
     name = "advisory"
     label = "Advisory"
+    description = "A formal advisory with the source's exact figures and tables · PDF + Markdown"
     public = False
     schema = Advisory
 

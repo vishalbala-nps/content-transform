@@ -24,7 +24,7 @@ class BrandKit(BaseModel):
     the kit later never changes how this job's files re-render."""
 
     kit_id: str  # the saved kit it was copied from
-    org_name: str = Field(max_length=80)  # replaces "Content Transform" in PDF headers and deck footers
+    org_name: str = Field(max_length=80)  # replaces "Spectra" in PDF headers and deck footers
     primary: HexColour  # replaces the house accent; code derives the tints
     ink: HexColour = "#1a1f2b"  # body text
     font: str | None = Field(default=None, max_length=60)  # Latin text; the house fonts are the fallback
@@ -64,6 +64,7 @@ class Artifact(BaseModel):
 class OutputAdapter(Protocol):
     name: str  # registry key and API id: "linkedin"
     label: str  # UI label: "LinkedIn post"
+    description: str  # UI: what the format makes, e.g. "Takeaway slides with speaker notes · PowerPoint + outline"
     public: bool  # public-facing: the IOC policy applies
     schema: type[BaseModel]  # what the model fills
 

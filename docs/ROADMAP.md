@@ -213,16 +213,22 @@ bar, a sidebar (New job, Brand kits, the jobs) and one view beside it.
   view the old results for now. Opening a job no longer fills the form;
   **New job from this** does. Generate is no longer blocked by a running
   job, which queues. Checked in headless Chrome at desktop and phone width.
-- **S9b — New view.** Source as tabs (paste, upload, link); formats as
-  tiles saying what files each makes (the API sends this); settings
-  grouped; "New kit…" in the brand kit menu.
+- **S9b — New view.** Done. Numbered sections: the source as tabs (paste,
+  upload with a drop zone, link), each keeping its own value; formats as
+  tiles with what each makes (`OutputAdapter.description`, sent by
+  `/api/formats`); settings in three groups (reader, output, brand). A bar
+  pinned to the bottom holds Generate and a one-line summary. "New kit…"
+  in the brand kit menu opens a one-kit editor dialog and chooses the kit
+  it makes. That dialog replaced the old kit manager, so the Brand kits
+  page already has Add and click-to-edit. The house style's name is now
+  Spectra. Checked in headless Chrome at desktop and phone width.
 - **S9c — job view.** Progress and usage until the brief exists, then the
   source and brief beside the outputs, one format at a time, chosen from a
   selector that shows each format's progress, flags and warnings; Copy and
   downloads in the format's header; a summary of the job's settings.
 - **S9d — Brand kits page.** Kits listed with swatches, logo, font and
-  banned phrases; add opens the editor dialog, a row opens it to edit, and
-  a row's menu deletes after a confirmation.
+  banned phrases, and a row's menu that deletes after a confirmation. (Add
+  and click-to-edit landed in S9b.)
 
 **Done when:** a job goes from New to its review in the new layout, past
 jobs and brand kits are reached from the sidebar, and every view works at

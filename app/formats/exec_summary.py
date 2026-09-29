@@ -68,6 +68,7 @@ Brief:
 class ExecSummaryAdapter:
     name = "exec_summary"
     label = "Executive summary"
+    description = "Key points, actions and a bottom line on one page · PDF + Markdown"
     public = False
     schema = ExecSummary
 

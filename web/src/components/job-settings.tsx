@@ -1,66 +1,140 @@
-import { BrandKitManager } from "@/components/brand-kit-manager"
+import { useState, type ReactNode } from "react"
+import { Plus } from "lucide-react"
+
+import { BrandKitDialog } from "@/components/brand-kit-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { upsertKit } from "@/lib/kits"
 import { LANGUAGES } from "@/lib/settings"
 import type { BrandKit, JobSettings, Language } from "@/lib/types"
 
-// The choices a job applies to every format it generates. Values mirror
+// The choices a job applies to every format it generates, in three groups:
+// who reads it, what comes out, and how it looks. Values mirror
 // GenerationConfig in app/formats/base.py; the labels are only for the UI.
 
 type Choice = "audience" | "tone" | "detail_level" | "objective"
 
-const CHOICES: { key: Choice; label: string; options: [string, string][] }[] = [
+const CHOICES: Record<Choice, { label: string; options: [string, string][] }> =
   {
-    key: "audience",
-    label: "Audience",
-    options: [
-      ["general_public", "General public"],
-      ["executive", "Executives"],
-      ["technical", "Technical"],
-      ["media", "Media"],
-    ],
-  },
-  {
-    key: "objective",
-    label: "Objective",
-    options: [
-      ["inform", "Inform"],
-      ["warn", "Warn"],
-      ["persuade", "Persuade"],
-      ["instruct", "Instruct"],
-      ["announce", "Announce"],
-    ],
-  },
-  {
-    key: "tone",
-    label: "Tone",
-    options: [
-      ["neutral", "Neutral"],
-      ["formal", "Formal"],
-      ["conversational", "Conversational"],
-      ["urgent", "Urgent"],
-    ],
-  },
-  {
-    key: "detail_level",
-    label: "Detail",
-    options: [
-      ["brief", "Brief"],
-      ["standard", "Standard"],
-      ["detailed", "Detailed"],
-    ],
-  },
-]
+    audience: {
+      label: "Audience",
+      options: [
+        ["general_public", "General public"],
+        ["executive", "Executives"],
+        ["technical", "Technical"],
+        ["media", "Media"],
+      ],
+    },
+    objective: {
+      label: "Objective",
+      options: [
+        ["inform", "Inform"],
+        ["warn", "Warn"],
+        ["persuade", "Persuade"],
+        ["instruct", "Instruct"],
+        ["announce", "Announce"],
+      ],
+    },
+    tone: {
+      label: "Tone",
+      options: [
+        ["neutral", "Neutral"],
+        ["formal", "Formal"],
+        ["conversational", "Conversational"],
+        ["urgent", "Urgent"],
+      ],
+    },
+    detail_level: {
+      label: "Detail",
+      options: [
+        ["brief", "Brief"],
+        ["standard", "Standard"],
+        ["detailed", "Detailed"],
+      ],
+    },
+  }
 
 // Radix Select items cannot have an empty value.
 const NO_KIT = "none"
+const NEW_KIT = "new"
+
+function Group({
+  title,
+  hint,
+  children,
+}: {
+  title: string
+  hint: string
+  children: ReactNode
+}) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <h3 className="text-sm font-medium">{title}</h3>
+        <p className="text-xs text-muted-foreground">{hint}</p>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function Field({
+  id,
+  label,
+  children,
+}: {
+  id: string
+  label: string
+  children: ReactNode
+}) {
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
+        {label}
+      </Label>
+      {children}
+    </div>
+  )
+}
+
+function ChoiceField({
+  choice,
+  value,
+  onChange,
+}: {
+  choice: Choice
+  value: JobSettings
+  onChange: (settings: JobSettings) => void
+}) {
+  const c = CHOICES[choice]
+  return (
+    <Field id={`setting-${choice}`} label={c.label}>
+      <Select
+        value={value[choice]}
+        onValueChange={(v) => onChange({ ...value, [choice]: v })}
+      >
+        <SelectTrigger id={`setting-${choice}`} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {c.options.map(([v, label]) => (
+            <SelectItem key={v} value={v}>
+              {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
+  )
+}
 
 export function JobSettingsFields({
   value,
@@ -71,51 +145,30 @@ export function JobSettingsFields({
   value: JobSettings
   onChange: (settings: JobSettings) => void
   kits: BrandKit[]
-  onKitsChange: (kits: BrandKit[]) => void
+  onKitsChange: (update: (kits: BrandKit[]) => BrandKit[]) => void
 }) {
+  // "New kit…" opens the kit editor here, so making a kit does not mean
+  // leaving the form. The kit it makes is chosen for this job.
+  const [creating, setCreating] = useState(false)
+
   return (
-    <fieldset className="space-y-2">
-      <legend className="text-sm font-medium">Settings</legend>
-      <div className="flex flex-wrap gap-x-4 gap-y-3">
-        {CHOICES.map((c) => (
-          <div key={c.key} className="space-y-1">
-            <Label
-              htmlFor={`setting-${c.key}`}
-              className="text-xs font-normal text-muted-foreground"
-            >
-              {c.label}
-            </Label>
-            <Select
-              value={value[c.key]}
-              onValueChange={(v) => onChange({ ...value, [c.key]: v })}
-            >
-              <SelectTrigger id={`setting-${c.key}`} className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {c.options.map(([v, label]) => (
-                  <SelectItem key={v} value={v}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        ))}
-        <div className="space-y-1">
-          <Label
-            htmlFor="setting-language"
-            className="text-xs font-normal text-muted-foreground"
-          >
-            Language
-          </Label>
+    <div className="grid gap-x-8 gap-y-6 md:grid-cols-3">
+      <Group title="Reader" hint="Who reads it, and what it should do">
+        <ChoiceField choice="audience" value={value} onChange={onChange} />
+        <ChoiceField choice="objective" value={value} onChange={onChange} />
+        <ChoiceField choice="tone" value={value} onChange={onChange} />
+      </Group>
+
+      <Group title="Output" hint="How much, and in which language">
+        <ChoiceField choice="detail_level" value={value} onChange={onChange} />
+        <Field id="setting-language" label="Language">
           <Select
             value={value.language}
             onValueChange={(v) =>
               onChange({ ...value, language: v as Language })
             }
           >
-            <SelectTrigger id="setting-language" className="w-40">
+            <SelectTrigger id="setting-language" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -126,14 +179,48 @@ export function JobSettingsFields({
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div className="min-w-64 flex-1 space-y-1">
-          <Label
-            htmlFor="setting-style"
-            className="text-xs font-normal text-muted-foreground"
+        </Field>
+        {value.language !== "en" && (
+          <p className="text-xs text-muted-foreground">
+            Written and checked in English, then translated. You review the
+            English; the files use the translation.
+          </p>
+        )}
+      </Group>
+
+      <Group title="Brand" hint="How the files look and sound">
+        <Field id="setting-brand-kit" label="Brand kit">
+          <Select
+            value={value.brand_kit_id ?? NO_KIT}
+            onValueChange={(v) => {
+              if (v === NEW_KIT) setCreating(true)
+              else onChange({ ...value, brand_kit_id: v === NO_KIT ? null : v })
+            }}
           >
-            Style (optional)
-          </Label>
+            <SelectTrigger id="setting-brand-kit" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_KIT}>None (house style)</SelectItem>
+              {kits.map((k) => (
+                <SelectItem key={k.kit_id} value={k.kit_id}>
+                  <span
+                    className="size-2.5 rounded-full"
+                    style={{ background: k.primary }}
+                    aria-hidden
+                  />
+                  {k.org_name}
+                </SelectItem>
+              ))}
+              <SelectSeparator />
+              <SelectItem value={NEW_KIT}>
+                <Plus />
+                New kit…
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field id="setting-style" label="Style (optional)">
           <Input
             id="setting-style"
             value={value.style ?? ""}
@@ -141,45 +228,21 @@ export function JobSettingsFields({
             onChange={(e) => onChange({ ...value, style: e.target.value })}
             placeholder="e.g. British spelling, avoid jargon"
           />
-        </div>
-        <div className="space-y-1">
-          <Label
-            htmlFor="setting-brand-kit"
-            className="text-xs font-normal text-muted-foreground"
-          >
-            Brand kit
-          </Label>
-          <div className="flex items-center gap-2">
-            <Select
-              value={value.brand_kit_id ?? NO_KIT}
-              onValueChange={(v) =>
-                onChange({ ...value, brand_kit_id: v === NO_KIT ? null : v })
-              }
-            >
-              <SelectTrigger id="setting-brand-kit" className="w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_KIT}>None (house style)</SelectItem>
-                {kits.map((k) => (
-                  <SelectItem key={k.kit_id} value={k.kit_id}>
-                    {k.org_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <BrandKitManager
-              kits={kits}
-              onChange={(next, chosen) => {
-                onKitsChange(next)
-                // A new kit is chosen for the next job. A deleted one needs
-                // nothing here: an unknown id already means no kit (App).
-                if (chosen) onChange({ ...value, brand_kit_id: chosen })
-              }}
-            />
-          </div>
-        </div>
-      </div>
-    </fieldset>
+        </Field>
+      </Group>
+
+      <BrandKitDialog
+        open={creating}
+        onOpenChange={setCreating}
+        kit={null}
+        onSaved={(kit) => {
+          onKitsChange((list) => upsertKit(list, kit))
+          onChange({ ...value, brand_kit_id: kit.kit_id })
+        }}
+        onDeleted={(id) =>
+          onKitsChange((list) => list.filter((k) => k.kit_id !== id))
+        }
+      />
+    </div>
   )
 }

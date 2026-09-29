@@ -993,3 +993,24 @@ Decided with the user from their suggestions:
 - The sidebar's job list is re-read every 2 s while any job in it is
   queued or running, so a queued job the user is not watching still shows
   when it starts and finishes. Nothing is polled when all are finished.
+
+**2026-09-29 — S9b: New view; `OutputAdapter.description`; the house style is Spectra.**
+- `OutputAdapter` gains `description: str` (frozen contract, agreed before
+  editing): one line on what the format makes, ending with its files
+  ("Takeaway slides with speaker notes · PowerPoint + outline"). `GET
+  /api/formats` sends it for the format tiles. A format still declares
+  everything about itself in its own module. No prompt, schema or render
+  change, so no eval run.
+- The house style's name, printed in PDF headers and deck footers when a
+  job has no brand kit, is now Spectra (`HOUSE_NAME`). This reverses "the
+  house style's name is not changed" in the S9 plan above. Files already
+  saved keep the old name until a passage in them is revised and they are
+  rendered again.
+- The source is three tabs (paste, upload, link). Each keeps its own value
+  and the job uses the tab showing, replacing "choosing one clears the
+  other" and the disabled textarea. The file tab checks the extension
+  against `/api/source-types` before upload; the server still decides.
+- The kit editor is now a dialog for one kit (`brand-kit-dialog.tsx`), made
+  for "New kit…" in the form. It replaced the dialog that listed every kit,
+  so the Brand kits page opens it from Add and from each row. Saving
+  closes it; a logo the server refuses keeps it open with the kit saved.

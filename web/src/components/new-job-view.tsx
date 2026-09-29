@@ -1,28 +1,51 @@
-import { useRef, useState } from "react"
-import { FileUp, LoaderCircle, X } from "lucide-react"
+import { useState, type ReactNode } from "react"
+import { LoaderCircle, Sparkles } from "lucide-react"
 
+import { FormatPicker } from "@/components/format-picker"
 import { JobSettingsFields } from "@/components/job-settings"
+import { SourceInput, type SourceKind } from "@/components/source-input"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { createJob, createJobFromFile, createJobFromUrl } from "@/lib/api"
+import { LANGUAGES } from "@/lib/settings"
 import type { BrandKit, FormatInfo, Job, JobSettings } from "@/lib/types"
 
 // The form for a new job: a source, the formats, the settings. Its draft is
 // held by App, so it survives a visit to another view.
 
 export interface JobDraft {
+  source: SourceKind // the tab showing, which is the one the job uses
   text: string
-  // A chosen file, else a link, replaces the pasted text as the source.
-  // Choosing one clears the other.
   file: File | null
   url: string
   // Formats chosen, by name. Null until the user or a reused job chooses:
   // every format.
   selected: Set<string> | null
   settings: JobSettings
+}
+
+function Section({
+  step,
+  title,
+  children,
+}: {
+  step: number
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <section className="space-y-3" aria-label={title}>
+      <h2 className="flex items-center gap-2 text-sm font-medium">
+        <span
+          aria-hidden
+          className="flex size-5 items-center justify-center rounded-full bg-foreground text-[11px] text-background tabular-nums"
+        >
+          {step}
+        </span>
+        {title}
+      </h2>
+      {children}
+    </section>
+  )
 }
 
 export function NewJobView({
@@ -41,39 +64,43 @@ export function NewJobView({
   formatsError: string | null
   sourceTypes: string[]
   kits: BrandKit[]
-  onKitsChange: (kits: BrandKit[]) => void
+  onKitsChange: (update: (kits: BrandKit[]) => BrandKit[]) => void
   onCreated: (job: Job) => void
 }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const fileInput = useRef<HTMLInputElement>(null)
   const { text, file, url, settings } = draft
+  // Without the upload list, the file tab is hidden: fall back to text.
+  const source =
+    draft.source === "file" && sourceTypes.length === 0 ? "text" : draft.source
   const selected = draft.selected ?? new Set(formats.map((f) => f.name))
 
   // An opened job may name a kit deleted since; the job is made without it
   // rather than refused.
-  const effectiveSettings: JobSettings = kits.some(
-    (k) => k.kit_id === settings.brand_kit_id
-  )
+  const kit = kits.find((k) => k.kit_id === settings.brand_kit_id) ?? null
+  const effectiveSettings: JobSettings = kit
     ? settings
     : { ...settings, brand_kit_id: null }
 
   function update(change: Partial<JobDraft>) {
+    setError(null)
     onDraftChange((d) => ({ ...d, ...change }))
-  }
-
-  function toggle(name: string, on: boolean) {
-    const next = new Set(selected)
-    if (on) next.add(name)
-    else next.delete(name)
-    update({ selected: next })
   }
 
   // Another job may be running: the new one queues behind it.
   async function run() {
+    if (submitting) return
     const link = url.trim()
-    if (!file && !link && !text.trim()) {
-      setError("Paste some text, upload a file or enter a link first.")
+    const missing =
+      source === "text" && !text.trim()
+        ? "Paste some text first."
+        : source === "file" && !file
+          ? "Choose a file first."
+          : source === "url" && !link
+            ? "Enter a link first."
+            : null
+    if (missing) {
+      setError(missing)
       return
     }
     if (selected.size === 0) {
@@ -85,11 +112,12 @@ export function NewJobView({
     try {
       // Keep the server's order, which is the order the formats are listed in.
       const names = formats.map((f) => f.name).filter((n) => selected.has(n))
-      const created = file
-        ? await createJobFromFile(file, names, effectiveSettings)
-        : link
-          ? await createJobFromUrl(link, names, effectiveSettings)
-          : await createJob(text, names, effectiveSettings)
+      const created =
+        source === "file" && file
+          ? await createJobFromFile(file, names, effectiveSettings)
+          : source === "url"
+            ? await createJobFromUrl(link, names, effectiveSettings)
+            : await createJob(text, names, effectiveSettings)
       onCreated(created)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -98,125 +126,74 @@ export function NewJobView({
     }
   }
 
+  const summary = [
+    `${selected.size} format${selected.size === 1 ? "" : "s"}`,
+    LANGUAGES[settings.language].name,
+    kit ? kit.org_name : "house style",
+  ].join(" · ")
+  const message = error ?? formatsError
+
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-xl font-semibold">New job</h1>
-        <p className="text-sm text-muted-foreground">
-          Give Spectra one source. It reads it once into a brief, writes each
-          format you choose from that brief, and checks every passage against
-          the source.
-        </p>
-      </div>
+    <div className="mx-auto max-w-4xl">
+      <div className="space-y-8 pb-6">
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold">New job</h1>
+          <p className="max-w-prose text-sm text-muted-foreground">
+            Give Spectra one source. It reads it once into a brief, writes each
+            format you choose from that brief, and checks every passage against
+            the source.
+          </p>
+        </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="source">Source text</Label>
-        <Textarea
-          id="source"
-          value={text}
-          onChange={(e) => update({ text: e.target.value })}
-          placeholder={
-            file
-              ? `Using ${file.name}. Remove the file to paste text instead.`
-              : url.trim()
-                ? `Using ${url.trim()}. Clear the link to paste text instead.`
-                : "Paste an article, report or advisory…"
-          }
-          disabled={file !== null || url.trim() !== ""}
-          className="min-h-56"
-        />
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-          {sourceTypes.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                ref={fileInput}
-                type="file"
-                accept={sourceTypes.join(",")}
-                className="sr-only"
-                tabIndex={-1}
-                aria-hidden
-                onChange={(e) => {
-                  update({ file: e.target.files?.[0] ?? null, url: "" })
-                  setError(null)
-                  // Lets the same file be chosen again after removing it.
-                  e.target.value = ""
-                }}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fileInput.current?.click()}
-              >
-                <FileUp />
-                {file ? "Choose another file" : "Or upload a file"}
-              </Button>
-              {file ? (
-                <span className="flex items-center gap-1">
-                  {file.name}
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label="Remove file"
-                    onClick={() => update({ file: null })}
-                  >
-                    <X />
-                  </Button>
-                </span>
-              ) : (
-                <span className="text-muted-foreground">
-                  {sourceTypes.join(", ")}
-                </span>
-              )}
-            </div>
-          )}
-          <Input
-            type="url"
-            value={url}
-            onChange={(e) => {
-              update({ url: e.target.value, file: null })
-              setError(null)
-            }}
-            placeholder="Or paste a link to a web page or document: https://…"
-            aria-label="Source link"
-            className="h-7 min-w-64 flex-1"
+        <Section step={1} title="Source">
+          <SourceInput
+            kind={source}
+            onKindChange={(k) => update({ source: k })}
+            text={text}
+            onTextChange={(t) => update({ text: t })}
+            file={file}
+            onFileChange={(f) => update({ file: f })}
+            url={url}
+            onUrlChange={(u) => update({ url: u })}
+            fileTypes={sourceTypes}
+            onSubmit={run}
           />
-        </div>
+        </Section>
+
+        <Section step={2} title="Formats">
+          <FormatPicker
+            formats={formats}
+            selected={selected}
+            onChange={(s) => update({ selected: s })}
+          />
+        </Section>
+
+        <Section step={3} title="Settings">
+          <JobSettingsFields
+            value={effectiveSettings}
+            onChange={(s) => update({ settings: s })}
+            kits={kits}
+            onKitsChange={onKitsChange}
+          />
+        </Section>
       </div>
 
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">Formats</legend>
-        <div className="flex flex-wrap gap-x-6 gap-y-2">
-          {formats.map((f) => (
-            <div key={f.name} className="flex items-center gap-2">
-              <Checkbox
-                id={`format-${f.name}`}
-                checked={selected.has(f.name)}
-                onCheckedChange={(on) => toggle(f.name, on === true)}
-              />
-              <Label htmlFor={`format-${f.name}`} className="font-normal">
-                {f.label}
-              </Label>
-            </div>
-          ))}
-        </div>
-      </fieldset>
-
-      <JobSettingsFields
-        value={effectiveSettings}
-        onChange={(s) => update({ settings: s })}
-        kits={kits}
-        onKitsChange={onKitsChange}
-      />
-
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Stays in reach however long the form is. */}
+      <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t bg-background/95 px-4 py-3 backdrop-blur md:-mx-6 md:px-6">
         <Button onClick={run} disabled={submitting || selected.size === 0}>
-          {submitting && <LoaderCircle className="animate-spin" />}
+          {submitting ? (
+            <LoaderCircle className="animate-spin" />
+          ) : (
+            <Sparkles />
+          )}
           Generate
         </Button>
-        {(error ?? formatsError) && (
+        {message ? (
           <span role="alert" className="text-sm text-destructive">
-            {error ?? formatsError}
+            {message}
           </span>
+        ) : (
+          <span className="text-sm text-muted-foreground">{summary}</span>
         )}
       </div>
     </div>

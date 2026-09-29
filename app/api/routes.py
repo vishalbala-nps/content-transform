@@ -43,6 +43,7 @@ MAX_SOURCE_CHARS = 100_000
 class FormatInfo(BaseModel):
     name: str
     label: str
+    description: str
 
 
 class JobSettings(BaseModel):
@@ -177,7 +178,7 @@ def _load_job(job_id: str) -> Job:
 
 @router.get("/formats", response_model=list[FormatInfo])
 async def formats() -> list[FormatInfo]:
-    return [FormatInfo(name=a.name, label=a.label) for a in ADAPTERS.values()]
+    return [FormatInfo(name=a.name, label=a.label, description=a.description) for a in ADAPTERS.values()]
 
 
 @router.get("/source-types", response_model=list[str])

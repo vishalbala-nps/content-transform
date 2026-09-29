@@ -22,6 +22,7 @@ import type { BrandKit, FormatInfo, Job, JobSummary } from "@/lib/types"
 // loses nothing.
 
 const EMPTY_DRAFT: JobDraft = {
+  source: "text",
   text: "",
   file: null,
   url: "",
@@ -108,6 +109,7 @@ export function App() {
   // what its brief was made from.
   function reuse(job: Job) {
     setDraft({
+      source: "text",
       text: job.source.markdown,
       file: null,
       url: "",

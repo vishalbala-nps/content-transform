@@ -10,7 +10,7 @@ that clashes with its own accent.
 import base64
 from dataclasses import dataclass
 
-HOUSE_NAME = "Content Transform"
+HOUSE_NAME = "Spectra"
 # Always after the kit's font: on every Mac, most Linux boxes, and PowerPoint.
 FALLBACK_FONTS = ('"Helvetica Neue"', "Arial", '"DejaVu Sans"', "sans-serif")
 

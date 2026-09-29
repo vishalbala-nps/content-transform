@@ -165,6 +165,7 @@ export interface BrandKitFields {
 export interface FormatInfo {
   name: string
   label: string
+  description: string // what it makes: "… · PDF + Markdown"
 }
 
 // One prose field of a format's payload, traced to the brief (app/verify/grounding.py).

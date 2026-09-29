@@ -128,6 +128,7 @@ def _outline(payload: Deck, lang: str) -> str:
 class DeckAdapter:
     name = "deck"
     label = "Slide deck"
+    description = "Takeaway slides with speaker notes · PowerPoint + outline"
     public = False
     schema = Deck
 

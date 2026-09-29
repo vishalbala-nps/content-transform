@@ -57,6 +57,7 @@ Brief:
 class XThreadAdapter:
     name = "x_thread"
     label = "X thread"
+    description = "A numbered thread, each post within 280 characters · Markdown"
     public = True
     schema = XThread
 

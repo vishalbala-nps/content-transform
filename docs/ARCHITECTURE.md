@@ -99,6 +99,7 @@ class Artifact(BaseModel):
 class OutputAdapter(Protocol):
     name: str                      # registry key and API id
     label: str                     # UI label
+    description: str               # UI: what it makes, "… · PDF + Markdown"
     public: bool                   # public-facing: the IOC policy applies
     schema: type[BaseModel]        # what the model fills
     def prompt(self, brief: ContentBrief, config: GenerationConfig) -> str: ...

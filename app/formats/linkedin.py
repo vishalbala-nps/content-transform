@@ -48,6 +48,7 @@ Brief:
 class LinkedInAdapter:
     name = "linkedin"
     label = "LinkedIn post"
+    description = "A post with a hook, short paragraphs and hashtags · Markdown"
     public = True
     schema = LinkedInPost
 
