@@ -276,9 +276,3 @@ source before anything is published.
    already made keep the kit as it was.
 8. **Your account:** the menu at the top right changes your password or signs
    you out.
-
----
-
-For developers: design rules are in `CLAUDE.md`, the architecture in
-`docs/ARCHITECTURE.md`, plans in `docs/ROADMAP.md` and the reasons behind
-decisions in `docs/DECISIONS.md`.
