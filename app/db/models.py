@@ -1,15 +1,20 @@
-"""The jobs table. SQLite in dev; nothing here is SQLite-specific.
+"""The tables. SQLite in dev; nothing here is SQLite-specific.
 
 A job's results are JSON columns on the row. Text artifacts live there in
 full; binary ones (PDF, PPTX) are in app/core/storage.py, and the row keeps
 their storage key.
+
+Jobs and brand kits belong to one user each (`user_id`). The column is
+nullable only because it was added to existing tables: rows from before
+users existed have none until `python -m tools.users adopt` gives them an
+owner, and until then no one sees them.
 """
 
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 
-from sqlalchemy import JSON, DateTime, Engine, String, Text, create_engine, inspect, text
+from sqlalchemy import JSON, Boolean, DateTime, Engine, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from app.core.config import get_settings
@@ -34,6 +39,7 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(String(32), index=True)  # the owner; see the module docstring
     status: Mapped[str] = mapped_column(String(16), index=True)  # queued, running, done, failed
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -56,9 +62,35 @@ class BrandKitRecord(Base):
     __tablename__ = "brand_kits"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(String(32), index=True)  # the owner; see the module docstring
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     kit: Mapped[dict] = mapped_column(JSON)  # BrandKit without kit_id: the fields and the logo's storage key
+
+
+class User(Base):
+    """Someone who can sign in. Created from the command line only
+    (`python -m tools.users`); there is no sign-up and no admin role."""
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), unique=True)  # stored lowercase
+    password_hash: Mapped[str] = mapped_column(String(255))  # scrypt, see app/core/users.py
+    active: Mapped[bool] = mapped_column(Boolean, default=True)  # a disabled user cannot sign in
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class UserSession(Base):
+    """A signed-in browser. The cookie holds a random token; only its SHA-256
+    is stored, so a copy of the database cannot be used to sign in."""
+
+    __tablename__ = "sessions"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(32), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 @lru_cache
@@ -74,7 +106,8 @@ def session() -> Session:
 
 
 def init_db() -> None:
-    """Create missing tables, and add missing nullable columns to existing ones.
+    """Create missing tables, and add missing nullable columns (and their
+    indexes) to existing ones.
 
     `create_all` never alters a table that exists. A new nullable column is
     the only change so far, and adding it needs no data migration, so this
@@ -93,3 +126,5 @@ def init_db() -> None:
                     raise RuntimeError(f"{table.name}.{column.name} is required and missing: needs a migration")
                 kind = column.type.compile(dialect=eng.dialect)
                 conn.execute(text(f"ALTER TABLE {table.name} ADD COLUMN {column.name} {kind}"))
+            for index in table.indexes:
+                index.create(conn, checkfirst=True)

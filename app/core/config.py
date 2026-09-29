@@ -22,6 +22,10 @@ class Settings:
     llm_cache: bool  # dev cache under .cache/llm/; set LLM_CACHE=0 for demo runs
     llm_cache_delay_s: float  # dev only: each cache hit waits this long, like a real call
     database_url: str  # SQLite in dev; the models are Postgres-compatible
+    session_hours: float  # how long a sign-in lasts, from signing in
+    session_cookie_secure: bool  # send the session cookie over HTTPS only; set SESSION_COOKIE_SECURE=1 when served over HTTPS
+    allow_private_urls: bool  # let link sources reach private and loopback addresses (an intranet); off by default
+    allowed_origins: tuple[str, ...]  # the site's public origin(s), when a proxy in front rewrites Host
 
     @property
     def llm_model(self) -> str:
@@ -50,4 +54,10 @@ def get_settings() -> Settings:
         llm_cache=os.environ.get("LLM_CACHE", "1") != "0",
         llm_cache_delay_s=float(os.environ.get("LLM_CACHE_DELAY_S", "0")),
         database_url=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL),
+        session_hours=float(os.environ.get("SESSION_HOURS", "8")),
+        session_cookie_secure=os.environ.get("SESSION_COOKIE_SECURE", "0") == "1",
+        allow_private_urls=os.environ.get("ALLOW_PRIVATE_URLS", "0") == "1",
+        allowed_origins=tuple(
+            o.strip().rstrip("/") for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()
+        ),
     )

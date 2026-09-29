@@ -17,7 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { useNow } from "@/hooks/use-now"
-import { watchJob } from "@/lib/api"
+import { getMe, watchJob } from "@/lib/api"
 import { resolveSelection, type SelectionKey } from "@/lib/grounding"
 import { choiceLabel, LANGUAGES } from "@/lib/settings"
 import { ago, fullTime } from "@/lib/time"
@@ -178,6 +178,9 @@ export function JobView({
         onFail: () => {
           setReconnecting(false)
           setError("Could not load this job.")
+          // An event stream cannot say why it failed; if the session ended,
+          // this answers 401 and the sign-in page takes over.
+          getMe().catch(() => {})
         },
       }),
     [id]

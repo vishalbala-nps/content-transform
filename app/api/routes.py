@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, Upl
 from fastapi.sse import EventSourceResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.api.auth import CurrentUser, current_user
 from app.core import brand_kits, jobs, revise, storage
 from app.core.brand_kits import BrandKitError, BrandKitFields
 from app.core.llm import LLMError
@@ -31,7 +32,10 @@ from app.ingest.text import ingest_text
 from app.ingest.url import ingest_url
 from app.understand.schemas import ContentBrief
 
-router = APIRouter(prefix="/api")
+# Signed-in only, every route: see app/api/auth.py. Each route that reads or
+# changes a job or a kit also checks it belongs to the caller; another
+# user's is a 404, as if it did not exist.
+router = APIRouter(prefix="/api", dependencies=[Depends(current_user)])
 
 # How often the event stream checks the job row for changes.
 POLL_S = 0.5
@@ -59,10 +63,10 @@ class JobSettings(BaseModel):
     style: str | None = Field(default=None, max_length=300)
     brand_kit_id: str | None = None  # a saved kit; the job keeps a copy of it
 
-    def to_config(self) -> GenerationConfig:
+    def to_config(self, user_id: str) -> GenerationConfig:
         kit = None
         if self.brand_kit_id:
-            kit = brand_kits.get_kit(self.brand_kit_id)
+            kit = brand_kits.get_kit(self.brand_kit_id, user_id)
             if kit is None:
                 raise HTTPException(status_code=422, detail="That brand kit no longer exists.")
         style = (self.style or "").strip() or None
@@ -169,9 +173,9 @@ def _title(job: Job) -> str:
     return first if len(first) <= 80 else first[:79] + "…"
 
 
-def _load_job(job_id: str) -> Job:
+def _load_job(job_id: str, user: CurrentUser) -> Job:
     job = jobs.get_job(job_id)
-    if job is None:
+    if job is None or job.user_id != user.id:
         raise HTTPException(status_code=404, detail="No such job.")
     return job
 
@@ -198,23 +202,24 @@ def _format_names(requested: list[str]) -> list[str]:
 
 
 @router.post("/jobs", response_model=JobView, status_code=201)
-async def create_job(req: JobRequest) -> JobView:
+async def create_job(req: JobRequest, user: CurrentUser) -> JobView:
     names = _format_names(req.formats)
     source = ingest_text(req.text)
     if not source.blocks:
         raise HTTPException(status_code=422, detail="Source text is empty.")
-    return _view(jobs.create_job(source, names, req.settings.to_config()))
+    return _view(jobs.create_job(user.id, source, names, req.settings.to_config(user.id)))
 
 
 @router.post("/jobs/upload", response_model=JobView, status_code=201)
 async def create_job_from_file(
+    user: CurrentUser,
     file: Annotated[UploadFile, File()],
     formats: Annotated[list[str], Form()],
     settings: Annotated[str | None, Form(description="JobSettings as JSON")] = None,
 ) -> JobView:
     names = _format_names(formats)
     try:
-        config = JobSettings.model_validate_json(settings or "{}").to_config()
+        config = JobSettings.model_validate_json(settings or "{}").to_config(user.id)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=f"Invalid settings: {e}") from e
     data = await file.read(MAX_FILE_BYTES + 1)
@@ -227,21 +232,21 @@ async def create_job_from_file(
         source = await asyncio.to_thread(ingest_file, file.filename or "", data)
     except IngestError as e:
         raise HTTPException(status_code=e.status, detail=str(e)) from e
-    return _create_ingested_job(source, names, config, "the file")
+    return _create_ingested_job(user.id, source, names, config, "the file")
 
 
 @router.post("/jobs/url", response_model=JobView, status_code=201)
-async def create_job_from_url(req: UrlJobRequest) -> JobView:
+async def create_job_from_url(req: UrlJobRequest, user: CurrentUser) -> JobView:
     names = _format_names(req.formats)
     try:
         source = await ingest_url(req.url.strip())
     except IngestError as e:
         raise HTTPException(status_code=e.status, detail=str(e)) from e
-    return _create_ingested_job(source, names, req.settings.to_config(), "the page")
+    return _create_ingested_job(user.id, source, names, req.settings.to_config(user.id), "the page")
 
 
 def _create_ingested_job(
-    source: SourceDocument, names: list[str], config: GenerationConfig, what: str
+    user_id: str, source: SourceDocument, names: list[str], config: GenerationConfig, what: str
 ) -> JobView:
     """Checks shared by uploads and URLs, which only find out how much text there is after parsing."""
     if not source.blocks:
@@ -252,16 +257,16 @@ def _create_ingested_job(
             detail=f"{what.capitalize()} has {len(source.markdown):,} characters of text; "
             f"the limit is {MAX_SOURCE_CHARS:,}.",
         )
-    return _view(jobs.create_job(source, names, config))
+    return _view(jobs.create_job(user_id, source, names, config))
 
 
 @router.get("/jobs", response_model=list[JobSummary])
-async def list_jobs() -> list[JobSummary]:
+async def list_jobs(user: CurrentUser) -> list[JobSummary]:
     return [
         JobSummary(
             id=j.id, status=j.status, created_at=_utc(j.created_at), title=_title(j), formats=j.formats
         )
-        for j in jobs.list_jobs()
+        for j in jobs.list_jobs(user.id)
     ]
 
 
@@ -329,30 +334,38 @@ async def _revise(call: Awaitable[FormatResult]) -> FormatResult:
 
 
 @router.post("/jobs/{job_id}/outputs/{format_name}/edit", response_model=FormatResult)
-async def edit_passage(job_id: str, format_name: str, req: PassageEdit) -> FormatResult:
+async def edit_passage(
+    job: Annotated[Job, Depends(_load_job)], format_name: str, req: PassageEdit
+) -> FormatResult:
     """Replace a passage with the reviewer's text. Trusted: not checked against the brief."""
     if not req.text.strip():
         raise HTTPException(status_code=422, detail="The new text is empty.")
-    return await _revise(revise.edit(job_id, format_name, req.path, req.text.strip()))
+    return await _revise(revise.edit(job.id, format_name, req.path, req.text.strip()))
 
 
 @router.post("/jobs/{job_id}/outputs/{format_name}/accept", response_model=FormatResult)
-async def accept_passage(job_id: str, format_name: str, req: PassageAccept) -> FormatResult:
-    return await _revise(revise.accept(job_id, format_name, req.path, req.accepted))
+async def accept_passage(
+    job: Annotated[Job, Depends(_load_job)], format_name: str, req: PassageAccept
+) -> FormatResult:
+    return await _revise(revise.accept(job.id, format_name, req.path, req.accepted))
 
 
 @router.post("/jobs/{job_id}/outputs/{format_name}/regenerate", response_model=FormatResult)
-async def regenerate_passage(job_id: str, format_name: str, req: PassageRegenerate) -> FormatResult:
+async def regenerate_passage(
+    job: Annotated[Job, Depends(_load_job)], format_name: str, req: PassageRegenerate
+) -> FormatResult:
     """Always asks the model, never the dev cache. Waits for it: seconds on
     Gemini, up to a minute or so on Ollama."""
-    return await _revise(revise.regenerate(job_id, format_name, req.path))
+    return await _revise(revise.regenerate(job.id, format_name, req.path))
 
 
 @router.post("/jobs/{job_id}/outputs/{format_name}/delete", response_model=FormatResult)
-async def delete_passage(job_id: str, format_name: str, req: PassageDelete) -> FormatResult:
+async def delete_passage(
+    job: Annotated[Job, Depends(_load_job)], format_name: str, req: PassageDelete
+) -> FormatResult:
     """Remove the list entry holding the passage (a paragraph, a tweet, a whole
     slide). Fields outside any list are required: 409."""
-    return await _revise(revise.delete(job_id, format_name, req.path))
+    return await _revise(revise.delete(job.id, format_name, req.path))
 
 
 @router.get("/jobs/{job_id}/events", response_class=EventSourceResponse)
@@ -385,43 +398,45 @@ def _kit_call(call, *args):
 
 
 @router.get("/brand-kits", response_model=list[BrandKit])
-async def list_brand_kits() -> list[BrandKit]:
-    return brand_kits.list_kits()
+async def list_brand_kits(user: CurrentUser) -> list[BrandKit]:
+    return brand_kits.list_kits(user.id)
 
 
 @router.post("/brand-kits", response_model=BrandKit, status_code=201)
-async def create_brand_kit(fields: BrandKitFields) -> BrandKit:
-    return brand_kits.create_kit(fields)
+async def create_brand_kit(fields: BrandKitFields, user: CurrentUser) -> BrandKit:
+    return brand_kits.create_kit(user.id, fields)
 
 
 @router.put("/brand-kits/{kit_id}", response_model=BrandKit)
-async def update_brand_kit(kit_id: str, fields: BrandKitFields) -> BrandKit:
+async def update_brand_kit(kit_id: str, fields: BrandKitFields, user: CurrentUser) -> BrandKit:
     """Changes the saved kit only; jobs already made with it keep their copy."""
-    return _kit_call(brand_kits.update_kit, kit_id, fields)
+    return _kit_call(brand_kits.update_kit, kit_id, user.id, fields)
 
 
 @router.delete("/brand-kits/{kit_id}", status_code=204)
-async def delete_brand_kit(kit_id: str) -> Response:
-    _kit_call(brand_kits.delete_kit, kit_id)
+async def delete_brand_kit(kit_id: str, user: CurrentUser) -> Response:
+    _kit_call(brand_kits.delete_kit, kit_id, user.id)
     return Response(status_code=204)
 
 
 @router.put("/brand-kits/{kit_id}/logo", response_model=BrandKit)
-async def upload_brand_kit_logo(kit_id: str, file: Annotated[UploadFile, File()]) -> BrandKit:
+async def upload_brand_kit_logo(
+    kit_id: str, user: CurrentUser, file: Annotated[UploadFile, File()]
+) -> BrandKit:
     """A PNG or JPEG, checked by its content, not its name."""
     data = await file.read(brand_kits.MAX_LOGO_BYTES + 1)
-    return await asyncio.to_thread(_kit_call, brand_kits.set_logo, kit_id, data)
+    return await asyncio.to_thread(_kit_call, brand_kits.set_logo, kit_id, user.id, data)
 
 
 @router.delete("/brand-kits/{kit_id}/logo", response_model=BrandKit)
-async def remove_brand_kit_logo(kit_id: str) -> BrandKit:
-    return _kit_call(brand_kits.remove_logo, kit_id)
+async def remove_brand_kit_logo(kit_id: str, user: CurrentUser) -> BrandKit:
+    return _kit_call(brand_kits.remove_logo, kit_id, user.id)
 
 
 @router.get("/brand-kits/{kit_id}/logo")
-async def brand_kit_logo(kit_id: str) -> Response:
+async def brand_kit_logo(kit_id: str, user: CurrentUser) -> Response:
     """The kit's current logo, for the UI to show."""
-    kit = brand_kits.get_kit(kit_id)
+    kit = brand_kits.get_kit(kit_id, user.id)
     if kit is None or kit.logo is None:
         raise HTTPException(status_code=404, detail="This brand kit has no logo.")
     try:

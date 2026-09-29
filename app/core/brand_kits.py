@@ -1,5 +1,8 @@
 """Saved brand kits: create, edit, delete, and their logos.
 
+Each kit belongs to one user, and every function here takes the user: a kit
+of someone else's is "No such brand kit", exactly as one that does not exist.
+
 A kit is chosen per job, and the job keeps a copy made at that moment
 (GenerationConfig.brand_kit), so nothing here ever changes an existing job.
 
@@ -15,6 +18,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.core import storage
 from app.db.models import BrandKitRecord, session
@@ -90,29 +94,38 @@ def _kit(record: BrandKitRecord) -> BrandKit:
     return BrandKit(kit_id=record.id, **record.kit)
 
 
-def list_kits() -> list[BrandKit]:
+def _owned(s: Session, kit_id: str, user_id: str) -> BrandKitRecord | None:
+    record = s.get(BrandKitRecord, kit_id)
+    return record if record and record.user_id == user_id else None
+
+
+def list_kits(user_id: str) -> list[BrandKit]:
     with session() as s:
-        records = s.scalars(select(BrandKitRecord).order_by(BrandKitRecord.created_at))
+        records = s.scalars(
+            select(BrandKitRecord)
+            .where(BrandKitRecord.user_id == user_id)
+            .order_by(BrandKitRecord.created_at)
+        )
         return [_kit(r) for r in records]
 
 
-def get_kit(kit_id: str) -> BrandKit | None:
+def get_kit(kit_id: str, user_id: str) -> BrandKit | None:
     with session() as s:
-        record = s.get(BrandKitRecord, kit_id)
+        record = _owned(s, kit_id, user_id)
         return _kit(record) if record else None
 
 
-def create_kit(fields: BrandKitFields) -> BrandKit:
-    record = BrandKitRecord(id=uuid.uuid4().hex, kit={**fields.model_dump(), "logo": None})
+def create_kit(user_id: str, fields: BrandKitFields) -> BrandKit:
+    record = BrandKitRecord(id=uuid.uuid4().hex, user_id=user_id, kit={**fields.model_dump(), "logo": None})
     with session() as s:
         s.add(record)
         s.commit()
     return _kit(record)
 
 
-def _change(kit_id: str, **changes) -> BrandKit:
+def _change(kit_id: str, user_id: str, **changes) -> BrandKit:
     with session() as s:
-        record = s.get(BrandKitRecord, kit_id)
+        record = _owned(s, kit_id, user_id)
         if record is None:
             raise BrandKitError("No such brand kit.", 404)
         record.kit = {**record.kit, **changes}  # replaced, not mutated: see the Job model
@@ -120,14 +133,14 @@ def _change(kit_id: str, **changes) -> BrandKit:
         return _kit(record)
 
 
-def update_kit(kit_id: str, fields: BrandKitFields) -> BrandKit:
-    return _change(kit_id, **fields.model_dump())
+def update_kit(kit_id: str, user_id: str, fields: BrandKitFields) -> BrandKit:
+    return _change(kit_id, user_id, **fields.model_dump())
 
 
-def delete_kit(kit_id: str) -> None:
+def delete_kit(kit_id: str, user_id: str) -> None:
     """Jobs made with the kit keep their copy, logo included."""
     with session() as s:
-        record = s.get(BrandKitRecord, kit_id)
+        record = _owned(s, kit_id, user_id)
         if record is None:
             raise BrandKitError("No such brand kit.", 404)
         s.delete(record)
@@ -154,15 +167,15 @@ def _logo_extension(data: bytes) -> str:
     return extension
 
 
-def set_logo(kit_id: str, data: bytes) -> BrandKit:
+def set_logo(kit_id: str, user_id: str, data: bytes) -> BrandKit:
     if len(data) > MAX_LOGO_BYTES:
         raise BrandKitError(f"Logos over {MAX_LOGO_BYTES // 2**20} MB are not accepted.", 413)
-    if get_kit(kit_id) is None:
+    if get_kit(kit_id, user_id) is None:
         raise BrandKitError("No such brand kit.", 404)
     key = f"brand/logos/{hashlib.sha256(data).hexdigest()}{_logo_extension(data)}"
     storage.save(key, data)
-    return _change(kit_id, logo=key)
+    return _change(kit_id, user_id, logo=key)
 
 
-def remove_logo(kit_id: str) -> BrandKit:
-    return _change(kit_id, logo=None)
+def remove_logo(kit_id: str, user_id: str) -> BrandKit:
+    return _change(kit_id, user_id, logo=None)

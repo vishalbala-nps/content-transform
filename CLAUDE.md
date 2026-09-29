@@ -76,10 +76,20 @@ Renderers: `python-pptx` for decks, WeasyPrint for PDFs, Jinja to SVG then
 
 ## Out of scope — do not build
 
-No auth, no multi-tenancy, no microservices, no Kubernetes, no vector database
-(the brief *is* the context; there is no retrieval requirement), no
-token-by-token streaming UI, no video output pipeline. See
+No multi-tenancy (one organisation per deployment; users within it have their
+own jobs and brand kits, see "Users" below), no microservices, no Kubernetes,
+no vector database (the brief *is* the context; there is no retrieval
+requirement), no token-by-token streaming UI, no video output pipeline. See
 `docs/DECISIONS.md` for why.
+
+## Users
+
+Email and password accounts, created only from the command line
+(`python -m tools.users`); no sign-up, no admin role. Every API route is
+signed-in only through `current_user` in `app/api/auth.py`, attached to the
+whole router. A route that loads a job or a brand kit must check it belongs
+to the caller and answer 404 otherwise. Single sign-on is planned: it will
+be another way to start a session, not a change to the routes.
 
 ## Working style
 

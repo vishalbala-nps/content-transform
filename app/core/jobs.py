@@ -9,6 +9,8 @@ cut off by a restart is queued again and resumes after its last saved step.
 - One job at a time. Model calls are limited process-wide (LLM_CONCURRENCY),
   so jobs running side by side would only share the same slots.
 - One server process. A second process would run the same jobs.
+- Jobs belong to a user (`user_id`), but run in one queue, oldest first,
+  whoever made them. Who may see a job is checked by the API, not here.
 - Database calls are synchronous, on the event loop: single-row SQLite reads
   and writes of about a millisecond. With no await between reading a row and
   writing it back, parallel formats cannot overwrite each other's results.
@@ -45,9 +47,10 @@ NO_CLAIMS = (
 _wake = asyncio.Event()  # set when a job is queued
 
 
-def create_job(source: SourceDocument, formats: list[str], config: GenerationConfig) -> Job:
+def create_job(user_id: str, source: SourceDocument, formats: list[str], config: GenerationConfig) -> Job:
     job = Job(
         id=uuid.uuid4().hex,
+        user_id=user_id,
         status="queued",
         formats=formats,
         config=config.model_dump(mode="json"),
@@ -76,9 +79,13 @@ def job_updated_at(job_id: str) -> datetime | None:
         return s.scalar(select(Job.updated_at).where(Job.id == job_id))
 
 
-def list_jobs(limit: int = 50) -> list[Job]:
+def list_jobs(user_id: str, limit: int = 50) -> list[Job]:
     with session() as s:
-        return list(s.scalars(select(Job).order_by(Job.created_at.desc()).limit(limit)))
+        return list(
+            s.scalars(
+                select(Job).where(Job.user_id == user_id).order_by(Job.created_at.desc()).limit(limit)
+            )
+        )
 
 
 def requeue_interrupted() -> int:

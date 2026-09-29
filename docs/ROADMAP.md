@@ -5,7 +5,7 @@ browser. No slice is "build the persistence layer".
 
 Mark the current slice here so a fresh session knows where it is.
 
-**Current slice: none chosen.** S9 (UI polish) is done; S6 and video are deferred (2026-09-29, see DECISIONS). The candidates are under "Later".
+**Current slice: none chosen.** S10 (users) is done; S6 and video are deferred (2026-09-29, see DECISIONS). The candidates are under "Later".
 
 ---
 
@@ -244,6 +244,28 @@ desktop and phone width.
 
 Done.
 
+## S10 — Users
+For deployment inside an organisation: several people, each with their own
+jobs, history and brand kits. Email and password for now; the organisation's
+single sign-on later.
+
+- **S10a — accounts and per-user data.** Done. Users and sessions tables,
+  scrypt passwords, an 8-hour session cookie, `python -m tools.users`
+  (create, passwd, disable, enable, list, adopt), every route signed-in
+  only, jobs and kits owned by one user (another user's is a 404), a
+  same-origin check on changes, a sign-in lockout after 5 failures, and
+  link sources refused on private addresses. Existing data adopted by
+  `user1@example.com`. Checked with a two-user API test (48 checks) on a
+  copy of the database.
+- **S10b — sign-in UI.** Done. A sign-in page, a user menu (change password,
+  sign out), and the sign-in page again when a session ends. Checked in
+  headless Chrome, including a session deleted under an open page.
+
+**Done when:** two users each see only their own jobs and kits, and neither
+can reach the other's by URL.
+
+Done.
+
 ## Later — noted 2026-09-29, not scheduled
 In no particular order. Each is picked up as its own slice or part of one.
 
@@ -263,6 +285,9 @@ In no particular order. Each is picked up as its own slice or part of one.
   one rule for hashtags in translated posts (translated or kept in English).
 - **PII scan** of public formats (ARCHITECTURE, `verify/pii.py`, not built).
 - **Images and scanned PDFs** read by a vision model (deferred since S4).
+- **Single sign-on** (OIDC in the app, or an identity header from a proxy
+  in front), shared "organisation" brand kits, and a fairer job queue when
+  many users share one worker. See the S10 entries in DECISIONS.
 
 ---
 

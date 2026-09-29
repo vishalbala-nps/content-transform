@@ -1048,3 +1048,53 @@ Decided with the user from their suggestions:
   saved kits guarantee is at least 3:1 against white text.
 - S9 is done. No next slice is chosen; the candidates are under "Later" in
   ROADMAP.
+
+**2026-09-29 — S10: users with their own data; email and password now, SSO later.**
+Reverses "No auth, no multi-tenancy" in CLAUDE.md's out-of-scope list, in
+part: a deployment inside a government organisation has several users, each
+with their own jobs, history and brand kits. Still one organisation per
+deployment, so still no multi-tenancy. Decided with the user:
+- Accounts are made only from the command line (`python -m tools.users`):
+  no sign-up page, no admin role. `user1@example.com` was created and
+  adopted every job and brand kit made before accounts (52 jobs, 1 kit).
+- Passwords: scrypt from the standard library (N=2^17, r=8, p=1, per-user
+  salt, parameters kept in the hash). argon2 would add `argon2-cffi` for no
+  gain here. Short passwords are allowed, with a warning from the tool, as
+  organisations set their own policy.
+- Sessions: a random token in an HttpOnly, SameSite=Lax cookie, 8 hours
+  from signing in; only its SHA-256 is stored. A cookie, not a bearer
+  header, because the event stream, download links and logo images cannot
+  send headers. Changing a password or disabling an account ends that
+  user's other sessions.
+- `current_user` is attached to the whole API router, so a new route is
+  signed-in only by default. Another user's job or kit answers 404, the
+  same as one that does not exist. Ownership is checked where the API loads
+  a row; the worker, revisions and storage still work by id alone.
+- Data-changing requests whose Origin is not the server's own address are
+  refused (403), beside SameSite. Vite's shorthand proxy rewrote Host
+  (`changeOrigin: true`), which made every request from the dev UI look
+  cross-site, so the dev proxy now keeps Host. A proxy in a deployment
+  that rewrites Host lists the site in `ALLOWED_ORIGINS`.
+- Five wrong passwords for an email within 15 minutes lock sign-in for that
+  email until the window passes. Kept in memory: a restart clears it. A
+  wrong email and a wrong password get the same message and take the same
+  time.
+- Link sources are refused on private, loopback, link-local and other
+  non-public addresses, redirects included. Reverses "the server fetches
+  any http(s) URL" from S4c: with several signed-in users on an internal
+  network, that let any of them read internal services through the server.
+  `ALLOW_PRIVATE_URLS=1` lifts it for an intranet. The check resolves the
+  name separately from the connection, so DNS rebinding is not closed.
+- Unchanged: the three frozen contracts, `GenerationConfig`, the evals, and
+  the one job queue, which runs every user's jobs oldest first. A large job
+  from one user delays everyone's; fairness is left until it matters.
+- Single sign-on later: an OIDC callback that starts the same session, or
+  an identity header from a trusted proxy read by `current_user`. Either
+  way the routes do not change. Shared organisation brand kits are also
+  left for later.
+- Checked with a two-user API test on a copy of the database (48 checks:
+  signed-out access, cross-user reads and writes of jobs, files, event
+  streams, revisions and kits, the Origin check, private addresses and a
+  redirect to one, password change, sign-out, lockout, disable) and in
+  headless Chrome (sign in, user menu, change password, sign out, another
+  user, a session deleted under an open page).

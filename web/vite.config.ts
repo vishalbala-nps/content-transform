@@ -12,9 +12,11 @@ export default defineConfig({
     },
   },
   server: {
-    // `npm run dev` on :5173 talks to the FastAPI server on :8000.
+    // `npm run dev` on :5173 talks to the FastAPI server on :8000. The
+    // browser's Host is passed on unchanged (the shorthand form would rewrite
+    // it), so the API's same-origin check sees the page's own address.
     proxy: {
-      "/api": "http://127.0.0.1:8000",
+      "/api": { target: "http://127.0.0.1:8000", changeOrigin: false },
     },
   },
 })

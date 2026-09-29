@@ -11,13 +11,16 @@ import {
   listFormats,
   listJobs,
   listSourceTypes,
+  signOut,
+  type Me,
 } from "@/lib/api"
 import { DEFAULT_SETTINGS, settingsFromConfig } from "@/lib/settings"
 import { sameView, viewFromUrl, viewHref, type View } from "@/lib/view"
 import type { BrandKit, FormatInfo, Job, JobSummary } from "@/lib/types"
 
-// The shell: a title bar, the sidebar, and one view in the main pane, chosen
-// by the URL (lib/view.ts). Data more than one view needs (formats, brand
+// The shell for a signed-in user (AuthGate mounts it once per sign-in): a
+// title bar, the sidebar, and one view in the main pane, chosen by the URL
+// (lib/view.ts). Data more than one view needs (formats, brand
 // kits, the job list) and the new job's draft live here, so switching views
 // loses nothing.
 
@@ -34,7 +37,7 @@ const EMPTY_DRAFT: JobDraft = {
 // so statuses and titles in the sidebar keep up.
 const HISTORY_POLL_MS = 2000
 
-export function App() {
+export function App({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const [view, setView] = useState<View>(viewFromUrl)
   const [formats, setFormats] = useState<FormatInfo[]>([])
   const [formatsError, setFormatsError] = useState<string | null>(null)
@@ -105,6 +108,14 @@ export function App() {
     refreshHistory()
   }
 
+  // Back to the start page, so whoever signs in next does not open this
+  // user's job from the URL.
+  async function leave() {
+    await signOut()
+    window.history.replaceState(null, "", viewHref({ kind: "new" }))
+    onSignedOut()
+  }
+
   // A file or link job comes back as the text it was read into, which is
   // what its brief was made from.
   function reuse(job: Job) {
@@ -124,7 +135,7 @@ export function App() {
       className="flex-col"
       style={{ "--header-height": "3.5rem" } as CSSProperties}
     >
-      <AppHeader onNavigate={navigate} />
+      <AppHeader me={me} onNavigate={navigate} onSignOut={leave} />
       <div className="flex flex-1">
         <AppSidebar view={view} jobs={history} onNavigate={navigate} />
         <SidebarInset className="min-w-0 p-4 md:p-6">

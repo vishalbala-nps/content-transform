@@ -8,9 +8,16 @@ import type {
   JobSummary,
 } from "@/lib/types"
 
+// Fired when the server says the session is gone (expired, signed out
+// elsewhere, account disabled), so the app can show the sign-in page.
+export const SIGNED_OUT_EVENT = "spectra:signed-out"
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
   const body = await res.json().catch(() => ({}))
+  if (res.status === 401 && !url.startsWith("/api/auth/login")) {
+    window.dispatchEvent(new Event(SIGNED_OUT_EVENT))
+  }
   if (!res.ok) {
     // FastAPI's validation errors are a list; show their messages, not JSON.
     const detail =
@@ -26,6 +33,39 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     throw new Error(detail || `HTTP ${res.status}`)
   }
   return body as T
+}
+
+// Signing in and out. The session is an HttpOnly cookie the browser sends
+// by itself, event stream and downloads included; nothing here stores it.
+export interface Me {
+  email: string
+}
+
+export function getMe(): Promise<Me> {
+  return request("/api/auth/me")
+}
+
+export function signIn(email: string, password: string): Promise<Me> {
+  return request("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  })
+}
+
+export async function signOut(): Promise<void> {
+  await fetch("/api/auth/logout", { method: "POST" })
+}
+
+export async function changePassword(
+  current: string,
+  next: string
+): Promise<void> {
+  await request("/api/auth/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current, new: next }),
+  })
 }
 
 export function isFinished(job: Job): boolean {
@@ -195,6 +235,7 @@ export function saveBrandKit(
 
 export async function deleteBrandKit(kitId: string): Promise<void> {
   const res = await fetch(`/api/brand-kits/${kitId}`, { method: "DELETE" })
+  if (res.status === 401) window.dispatchEvent(new Event(SIGNED_OUT_EVENT))
   if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`)
 }
 

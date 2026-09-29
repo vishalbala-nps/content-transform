@@ -14,7 +14,7 @@ understand/  -> ContentBrief       one schema-constrained LLM call
 formats/     -> payload JSON       one LLM call per selected format
 render/      -> files              pure Python, no model calls
 verify/      -> grounding report   claims mapped back to source blocks
-api/ web/                          jobs, SSE progress, review UI
+api/ web/                          jobs, SSE progress, review UI, sign-in
 ```
 
 The `ContentBrief` is the seam that matters. Source analysis happens once;
@@ -184,12 +184,32 @@ Translation runs **after** schema filling so character limits and layout
 constraints still hold, and after grounding, so the fact check always reads
 English.
 
+## Users
+
+One organisation per deployment; each user has their own jobs, history and
+brand kits. Accounts are email and password, made only with
+`python -m tools.users`.
+
+- `app/core/users.py`: scrypt password hashes (standard library), sessions
+  (a random token in an HttpOnly, SameSite=Lax cookie; only its SHA-256 is
+  stored; 8 hours), a lockout after 5 failed sign-ins for an email.
+- `app/api/auth.py`: `current_user`, attached to the whole API router, and
+  the sign-in routes (`/api/auth/login`, `logout`, `me`, `password`). A
+  same-origin check refuses data-changing requests from other sites.
+- Jobs and brand kits carry `user_id`. The API checks ownership when it
+  loads one and answers 404 for another user's. The worker, revisions and
+  storage address jobs by id and never check: they are only reached through
+  a route that has.
+- Single sign-on later is another way to start the same session (an OIDC
+  callback), or an identity header `current_user` reads from a trusted
+  proxy. Routes do not change either way.
+
 ## Directory layout
 
 ```
 app/
   core/          config.py, llm.py, usage.py, jobs.py, storage.py, revise.py,
-                 brand_kits.py
+                 brand_kits.py, users.py
   ingest/        base.py, common.py, registry.py, url.py, text.py, docx.py,
                  pdf.py, html.py, image.py
   understand/    brief.py, schemas.py, prompts/
@@ -200,11 +220,12 @@ app/
   render/        theme.py, labels.py, labels.json, pdf.py, pptx.py, svg.py,
                  templates/, fonts/
   verify/        grounding.py, pii.py
-  api/           routes.py, sse.py
+  api/           routes.py, auth.py
   db/            models.py, migrations/
 web/             React + Vite
 evals/           fixtures/, run_evals.py
-tools/           translate_labels.py (fills render/labels.json)
+tools/           translate_labels.py (fills render/labels.json),
+                 users.py (makes and manages accounts)
 storage/         artifacts/
 ```
 

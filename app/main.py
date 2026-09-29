@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from app.api import auth
 from app.api.routes import router
 from app.core import jobs
 from app.core.config import get_settings
@@ -32,7 +33,8 @@ async def lifespan(app: FastAPI):
         await worker
 
 
-app = FastAPI(title="content-transform", lifespan=lifespan)
+app = FastAPI(title="Spectra", lifespan=lifespan)
+app.include_router(auth.router)
 app.include_router(router)
 if WEB_DIST.is_dir():
     app.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="web")
