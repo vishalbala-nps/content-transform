@@ -1034,3 +1034,17 @@ Decided with the user from their suggestions:
 - On a phone the output comes before the source. The S7b note stands:
   stacked, selecting a passage highlights its blocks but does not scroll to
   them.
+
+**2026-09-29 — S9d: brand kits page; delete from the row menu only. S9 done.**
+- Added the shadcn `dropdown-menu` and `alert-dialog` components, both on
+  `radix-ui`, already installed.
+- A kit is deleted from its row's ⋯ menu, after a confirmation that says
+  jobs keep their copy. Delete left the editor dialog, so there is one way
+  to do it, and "New kit…" in the form never shows a delete for a kit that
+  does not exist yet. The confirmation uses a plain button rather than the
+  alert dialog's own action, which closes on click: it stays open until the
+  server answers and shows a failure there.
+- A kit without a logo is shown by its initials on its main colour, which
+  saved kits guarantee is at least 3:1 against white text.
+- S9 is done. No next slice is chosen; the candidates are under "Later" in
+  ROADMAP.

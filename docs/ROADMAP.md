@@ -5,7 +5,7 @@ browser. No slice is "build the persistence layer".
 
 Mark the current slice here so a fresh session knows where it is.
 
-**Current slice: S9 (UI polish).** S8 is done; S6 and video are deferred (2026-09-29, see DECISIONS).
+**Current slice: none chosen.** S9 (UI polish) is done; S6 and video are deferred (2026-09-29, see DECISIONS). The candidates are under "Later".
 
 ---
 
@@ -202,7 +202,7 @@ config here. Baseline run `20260928-191922` (Gemini `gemini-3.5-flash-lite`,
 cache on): 28/28 facts, 0 invented numbers, 0 IOC leaks, 2 format
 warnings, 5 of 382 passages flagged.
 
-## S9 — UI polish  ← current
+## S9 — UI polish
 UI changes and visual refinement, deferred from S8, from the user's
 suggestions. The product is named Spectra. The single page becomes a title
 bar, a sidebar (New job, Brand kits, the jobs) and one view beside it.
@@ -231,13 +231,18 @@ bar, a sidebar (New job, Brand kits, the jobs) and one view beside it.
   in the format's header. On a phone the output comes before the source.
   Checked in headless Chrome at desktop and phone width, including a live
   job on Gemini and an accept and undo.
-- **S9d — Brand kits page.** Kits listed with swatches, logo, font and
-  banned phrases, and a row's menu that deletes after a confirmation. (Add
-  and click-to-edit landed in S9b.)
+- **S9d — Brand kits page.** Done. Each row shows the kit's logo (or its
+  initials on its main colour), font, banned-phrase count and both
+  colours, and opens the editor. Its ⋯ menu edits or deletes; delete asks
+  first and stays open until the server answers. Deleting left the editor
+  dialog. An empty page offers to add a kit. Checked in headless Chrome at
+  desktop and phone width.
 
 **Done when:** a job goes from New to its review in the new layout, past
 jobs and brand kits are reached from the sidebar, and every view works at
 desktop and phone width.
+
+Done.
 
 ## Later — noted 2026-09-29, not scheduled
 In no particular order. Each is picked up as its own slice or part of one.

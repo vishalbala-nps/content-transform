@@ -1,5 +1,5 @@
 import { useRef, useState } from "react"
-import { ImageUp, LoaderCircle, Trash2, X } from "lucide-react"
+import { ImageUp, LoaderCircle, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -15,14 +15,13 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
   brandKitLogoUrl,
-  deleteBrandKit,
   removeBrandKitLogo,
   saveBrandKit,
   uploadBrandKitLogo,
 } from "@/lib/api"
 import type { BrandKit } from "@/lib/types"
 
-// Create or edit one saved brand kit. The server checks every field
+// Create or edit one saved brand kit (deleting is on the Brand kits page). The server checks every field
 // (colours readable on white, a font name safe for CSS, a real PNG or JPEG
 // logo) and its message is shown as is. A job keeps a copy of the kit it was
 // made with, so nothing here changes an existing job.
@@ -92,13 +91,11 @@ export function BrandKitDialog({
   onOpenChange,
   kit,
   onSaved,
-  onDeleted,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   kit: BrandKit | null // null: a new kit
   onSaved: (kit: BrandKit) => void // may be called twice: the kit, then its logo
-  onDeleted: (kitId: string) => void
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -107,10 +104,6 @@ export function BrandKitDialog({
         <KitEditor
           kit={kit}
           onSaved={onSaved}
-          onDeleted={(id) => {
-            onDeleted(id)
-            onOpenChange(false)
-          }}
           onDone={() => onOpenChange(false)}
         />
       </DialogContent>
@@ -121,12 +114,10 @@ export function BrandKitDialog({
 function KitEditor({
   kit,
   onSaved,
-  onDeleted,
   onDone,
 }: {
   kit: BrandKit | null
   onSaved: (kit: BrandKit) => void
-  onDeleted: (kitId: string) => void
   onDone: () => void
 }) {
   // The kit as saved so far: a new kit has one after its first save, even if
@@ -136,7 +127,6 @@ function KitEditor({
   const [logo, setLogo] = useState<File | null>(null) // chosen, not yet uploaded
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const logoUrl = saved && brandKitLogoUrl(saved)
 
@@ -180,13 +170,6 @@ function KitEditor({
       const next = await removeBrandKitLogo(saved.kit_id)
       setSaved(next)
       onSaved(next)
-    })
-
-  const remove = () =>
-    act(async () => {
-      if (!saved) return
-      await deleteBrandKit(saved.kit_id)
-      onDeleted(saved.kit_id)
     })
 
   return (
@@ -317,43 +300,8 @@ function KitEditor({
         )}
       </div>
 
-      <DialogFooter className="items-center sm:justify-between">
-        {saved &&
-          (confirmDelete ? (
-            <span className="flex flex-wrap items-center gap-2 text-sm">
-              Delete {saved.org_name}? Jobs made with it keep their copy.
-              <Button
-                variant="destructive"
-                size="sm"
-                disabled={busy}
-                onClick={remove}
-              >
-                Delete
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setConfirmDelete(false)}
-              >
-                Cancel
-              </Button>
-            </span>
-          ) : (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={() => setConfirmDelete(true)}
-            >
-              <Trash2 />
-              Delete kit
-            </Button>
-          ))}
-        <Button
-          className="sm:ml-auto"
-          disabled={busy || !draft.org_name.trim()}
-          onClick={save}
-        >
+      <DialogFooter>
+        <Button disabled={busy || !draft.org_name.trim()} onClick={save}>
           {busy && <LoaderCircle className="animate-spin" />}
           {saved ? "Save changes" : "Create kit"}
         </Button>

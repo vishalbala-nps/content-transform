@@ -197,9 +197,6 @@ export function JobSettingsFields({
           onKitsChange((list) => upsertKit(list, kit))
           onChange({ ...value, brand_kit_id: kit.kit_id })
         }}
-        onDeleted={(id) =>
-          onKitsChange((list) => list.filter((k) => k.kit_id !== id))
-        }
       />
     </div>
   )
